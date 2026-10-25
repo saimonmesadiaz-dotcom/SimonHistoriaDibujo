@@ -1,7 +1,6 @@
 import base64
 import html
 import io
-import math
 import os
 
 import numpy as np
@@ -15,17 +14,23 @@ from streamlit_drawable_canvas import st_canvas
 # ---------------------------------------------------------------------------
 PAPEL = (252, 248, 236)
 PAPEL_HEX = "#FCF8EC"
-AZUL_TINTA = "#1B2F52"
-ULTRAMAR = "#2E5BBA"
+AZUL = "#0A4AAE"
+AMARILLO = "#FDB92D"
+MORADO = "#6A4FA8"
+VERDE = "#7FBC7B"
+CREMA = "#FDF8EA"
 
 PIGMENTOS = [
-    ("Azul ultramar", "#2E6BD6"),
-    ("Rojo Carmín", "#D62839"),
-    ("Verde hoja", "#3FA34D"),
-    ("Amarillo cadmio", "#F7C325"),
-    ("Naranja", "#F26B21"),
-    ("Violeta", "#6B3FA0"),
+    ("Rojo", "#F0392B"),
+    ("Azul", "#0A4AAE"),
+    ("Verde", "#7FBC7B"),
+    ("Morado", "#6A4FA8"),
+    ("Naranja", "#F28C28"),
+    ("Rosa", "#E873A5"),
+    ("Celeste", "#4FB3E8"),
+    ("Negro", "#1E1B1A"),
 ]
+IDX_PERSONALIZADO = 8  # el botón "+"
 
 GROSORES = [("Muy fino", 2), ("Fino", 5), ("Medio", 10), ("Grueso", 18), ("Brocha", 32)]
 
@@ -34,6 +39,7 @@ HERRAMIENTAS = {
     "Rectángulo": "rect",
     "Círculo": "circle",
 }
+ETIQUETA_HERRAMIENTA = ["Pincel", "Cuadro", "Círculo"]
 
 st.set_page_config(
     page_title="Taller de arte",
@@ -70,6 +76,14 @@ def elegir_herramienta(i):
     st.session_state.tool = i
 
 
+def boton(etiqueta, **kw):
+    """Botón que ocupa todo el ancho de su columna (según la versión de Streamlit)."""
+    try:
+        return st.button(etiqueta, width="stretch", **kw)
+    except TypeError:
+        return st.button(etiqueta, use_container_width=True, **kw)
+
+
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
@@ -81,15 +95,6 @@ def mini(texto):
 def hex_a_rgb(hex_):
     hex_ = hex_.lstrip("#")
     return tuple(int(hex_[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def mezcla(hex_, destino, t):
-    r, g, b = hex_a_rgb(hex_)
-    return "#%02x%02x%02x" % (
-        int(r + (destino[0] - r) * t),
-        int(g + (destino[1] - g) * t),
-        int(b + (destino[2] - b) * t),
-    )
 
 
 def imagen_del_lienzo(datos):
@@ -153,445 +158,285 @@ def seccion(numero, titulo, variante=""):
 
 
 # ---------------------------------------------------------------------------
-# Geometría de la paleta (viewBox 300 x 236)
-# ---------------------------------------------------------------------------
-VB_W, VB_H = 300, 236
-
-# (centro x, centro y, diámetro) de los 6 pigmentos y del botón "+" (índice 6)
-POTES = [
-    (62, 74, 58),
-    (148, 50, 58),
-    (236, 74, 58),
-    (48, 146, 58),
-    (252, 148, 58),
-    (112, 190, 58),
-    (150, 126, 38),
-]
-
-
-def svg_paleta():
-    return mini(f"""
-    <svg viewBox="0 0 {VB_W} {VB_H}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <defs>
-    <linearGradient id="pal-madera" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="300" y2="236">
-    <stop offset="0" stop-color="#F3CE94"/><stop offset=".55" stop-color="#E4AB65"/><stop offset="1" stop-color="#D4944C"/>
-    </linearGradient>
-    <clipPath id="pal-forma">
-    <ellipse cx="150" cy="116" rx="142" ry="104"/>
-    <ellipse cx="130" cy="190" rx="82" ry="38"/>
-    </clipPath>
-    </defs>
-    <g fill="#7A4A22" stroke="#7A4A22" stroke-width="9" stroke-linejoin="round">
-    <ellipse cx="150" cy="116" rx="142" ry="104"/>
-    <ellipse cx="130" cy="190" rx="82" ry="38"/>
-    </g>
-    <g fill="url(#pal-madera)">
-    <ellipse cx="150" cy="116" rx="142" ry="104"/>
-    <ellipse cx="130" cy="190" rx="82" ry="38"/>
-    </g>
-    <g clip-path="url(#pal-forma)" fill="none" stroke-linecap="round">
-    <path d="M10 70 C70 54 120 92 180 72 S260 52 296 76" stroke="#C98A47" stroke-opacity=".45" stroke-width="2"/>
-    <path d="M6 112 C60 98 110 134 170 114 S250 96 298 120" stroke="#C98A47" stroke-opacity=".4" stroke-width="2"/>
-    <path d="M10 160 C70 146 120 180 180 162 S260 148 296 168" stroke="#C98A47" stroke-opacity=".4" stroke-width="2"/>
-    <path d="M30 206 C80 196 130 218 190 204 S250 196 280 210" stroke="#C98A47" stroke-opacity=".35" stroke-width="2"/>
-    <path d="M28 82 C44 44 96 22 150 20" stroke="#FFF1CF" stroke-opacity=".75" stroke-width="4"/>
-    </g>
-    </svg>
-    """)
-
-
-# ---------------------------------------------------------------------------
 # Estilos
 # ---------------------------------------------------------------------------
-def icono(interior):
-    interior = interior.replace("<", "%3C").replace(">", "%3E").replace("#", "%23")
-    return (
-        "url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E"
-        + interior
-        + "%3C/svg%3E\")"
-    )
-
-
-ICONOS_HERRAMIENTA = [
-    icono(
-        "<g stroke='#6B4A2B' stroke-width='3.5' stroke-linecap='round'>"
-        "<path d='M8 30 L22 10'/><path d='M16 33 L30 12'/><path d='M24 35 L36 17'/></g>"
-    ),
-    icono(
-        "<g fill='none' stroke='#6B4A2B' stroke-width='3' stroke-linecap='round'>"
-        "<rect x='6' y='6' width='28' height='28' rx='4'/><path d='M20 6 V34 M6 20 H34'/></g>"
-    ),
-    icono(
-        "<circle cx='20' cy='20' r='13' fill='none' stroke='#6B4A2B' stroke-width='3'/>"
-    ),
+RADIOS_MANCHA = [
+    "54% 46% 58% 42% / 48% 56% 44% 52%",
+    "46% 54% 42% 58% / 56% 44% 56% 44%",
+    "58% 42% 52% 48% / 44% 58% 42% 56%",
+    "44% 56% 48% 52% / 54% 46% 58% 42%",
 ]
 
 
 def css_dinamico():
     reglas = []
 
-    # Pigmentos y botón "+": posición sobre la paleta, color y globo con el nombre
-    for i, (cx, cy, d) in enumerate(POTES):
-        izq = (cx - d / 2) / VB_W * 100
-        arr = (cy - d / 2) / VB_H * 100
-        ancho = d / VB_W * 100
+    # Cada pigmento es una mancha de pintura plana con forma distinta
+    for i, (_, hex_) in enumerate(PIGMENTOS):
+        radio = RADIOS_MANCHA[i % len(RADIOS_MANCHA)]
         reglas.append(
-            f".st-key-pig_{i}{{left:{izq:.2f}%;top:{arr:.2f}%;width:{ancho:.2f}%;}}"
-        )
-        if i < len(PIGMENTOS):
-            nombre, hex_ = PIGMENTOS[i]
-            claro = mezcla(hex_, (255, 255, 255), 0.45)
-            oscuro = mezcla(hex_, (0, 0, 0), 0.30)
-            borde = mezcla(hex_, (0, 0, 0), 0.55)
-            reglas.append(
-                f".st-key-pig_{i} button{{"
-                f"background:radial-gradient(circle at 34% 28%, {claro} 0%, {hex_} 50%, {oscuro} 100%) !important;"
-                f"border:3px solid {borde} !important;}}"
-            )
-        else:
-            nombre = "Color personalizado"
-        if cx < VB_W * 0.3:
-            ancla = "left:0;"
-        elif cx > VB_W * 0.7:
-            ancla = "right:0;"
-        else:
-            ancla = "left:50%;transform:translateX(-50%);"
-        reglas.append(f'.st-key-pig_{i}::before{{content:"{nombre}";{ancla}}}')
-
-    # Trazos de tiza: grosor y color
-    anchos = [3, 6, 10, 15, 21]
-    colores = ["#F6D84A", "#F4C430", "#F58A2B", "#E4452B", "#C62828"]
-    for i, (px, col) in enumerate(zip(anchos, colores)):
-        reglas.append(
-            f".st-key-gro_{i} button::after{{width:{px}px;"
-            f"background:repeating-linear-gradient(0deg, rgba(255,255,255,.22) 0 2px, transparent 2px 5px), {col};}}"
+            f".st-key-pig_{i} button{{background:{hex_} !important;border-radius:{radio} !important;}}"
         )
 
-    # Iconos de herramienta
-    for i, url in enumerate(ICONOS_HERRAMIENTA):
-        reglas.append(f".st-key-tool_{i} button{{background-image:{url} !important;}}")
+    # Barras de grosor
+    for i, px in enumerate([3, 6, 10, 16, 24]):
+        reglas.append(f".st-key-gro_{i} button::after{{height:{px}px;}}")
 
     # Selección actual
     reglas.append(
         f".st-key-pig_{st.session_state.pig} button{{"
-        "box-shadow:0 0 0 3px #FFF9EC, 0 0 0 6px #F0932B, 0 6px 8px rgba(0,0,0,.3) !important;"
-        "transform:scale(1.1) !important;}"
+        f"box-shadow:0 0 0 3px #FFFBEF, 0 0 0 7px {AZUL} !important;"
+        "transform:scale(1.08) !important;}"
     )
     reglas.append(
-        f".st-key-gro_{st.session_state.gro} button, .st-key-tool_{st.session_state.tool} button{{"
-        "border:3px solid #F0932B !important;background-color:#FFF3DC !important;}"
+        f".st-key-gro_{st.session_state.gro} button{{"
+        f"background:#FFE7A3 !important;border:3px solid {AZUL} !important;}}"
+    )
+    reglas.append(
+        f".st-key-tool_{st.session_state.tool} button{{"
+        f"background:{AZUL} !important;border-color:{AZUL} !important;}}"
+        f".st-key-tool_{st.session_state.tool} button p{{color:#FFFBEF !important;}}"
     )
     return "<style>" + "\n".join(reglas) + "</style>"
 
 
 CSS_BASE = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Fredoka:wght@500;600&family=Kalam:wght@400;700&family=Nunito:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Delicious+Handrawn&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=swap');
 
 :root{
-  --papel:#FCF8EC;
-  --crema:#F4EBD9;
-  --tinta:#1B2F52;
-  --tinta-suave:#4A5F82;
-  --ultramar:#2E5BBA;
-  --cielo:#CFE0F5;
-  --turquesa:#2BB5C6;
-  --amarillo:#F7C325;
+  --crema:#FDF8EA;
+  --papel:#FFFBEF;
+  --azul:#0A4AAE;
+  --azul-osc:#063276;
+  --amarillo:#FDB92D;
+  --morado:#6A4FA8;
+  --verde:#7FBC7B;
+  --texto:#16315E;
 }
 
 html, .stApp{color-scheme:light;}
-.stApp{
-  background-color:#F4EBD9;
-  background-image:
-    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .35 0 0 0 0 .3 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E"),
-    radial-gradient(circle at 0% 100%, rgba(46,91,186,.16), transparent 38%),
-    radial-gradient(circle at 100% 0%, rgba(43,181,198,.14), transparent 30%);
-  color:var(--tinta);
-}
+.stApp{background:var(--crema);color:var(--texto);}
 .stApp, .stApp p, .stApp label, .stApp li,
 .stApp [data-testid="stMarkdownContainer"],
 .stApp [data-testid="stCaptionContainer"]{
   font-family:'Nunito','Segoe UI',sans-serif;
-  color:var(--tinta);
+  color:var(--texto);
 }
 [data-testid="stHeader"]{background:transparent;}
 .block-container{
   max-width:1400px;
-  padding-top:1.4rem;
+  padding-top:1rem;
   padding-right:150px;
 }
 
-/* ---------- Barra superior ---------- */
-.barra{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  background:var(--tinta);
-  border-radius:6px;
-  padding:14px 22px;
-  box-shadow:0 8px 0 -3px rgba(27,47,82,.18);
+/* ---------- Banner con manchas ---------- */
+.banner{width:100%;height:auto;display:block;}
+.lema{
+  font-family:'Caveat','Delicious Handrawn',cursive;
+  font-weight:600;
+  font-size:2rem;
+  text-align:center;
+  color:var(--azul);
+  margin:.2rem 0 1.4rem;
 }
-.barra-izq{display:flex;align-items:center;gap:14px;}
-.barra-icono{
-  width:42px;height:42px;
-  display:grid;place-items:center;
-  background:var(--amarillo);
-  border-radius:50%;
-}
-.barra-titulo{
-  font-family:'Caveat Brush','Kalam',cursive;
-  font-size:1.9rem;
-  color:#FCF8EC;
-  letter-spacing:.5px;
-}
-.barra-der{
-  font-size:.95rem;
-  color:#CFE0F5;
-  border:1.5px solid var(--amarillo);
-  border-radius:4px;
-  padding:5px 12px;
-}
-
-/* ---------- Hero ---------- */
-.hero{display:flex;gap:26px;align-items:flex-start;margin-top:1.4rem;}
-.hero-dabs{width:120px;flex:none;height:auto;}
-.chip{
-  display:inline-block;
-  background:var(--amarillo);
-  color:var(--tinta);
-  border:2px solid var(--tinta);
-  font-weight:800;
-  font-size:.95rem;
-  padding:5px 14px;
-  transform:rotate(-1.6deg);
-}
-.hero h1{
-  font-family:'Caveat Brush','Kalam',cursive;
-  font-weight:400;
-  font-size:4.6rem;
-  line-height:.98;
-  margin:.6rem 0 .2rem;
-  padding:0;
-  color:var(--tinta);
-}
-.hero h1 .l2{color:var(--ultramar);display:block;}
-.hero p{font-size:1.1rem;line-height:1.65;max-width:600px;margin:.9rem 0 0;color:var(--tinta-suave);}
-
-.fichas{display:flex;flex-direction:column;gap:14px;margin-top:1.6rem;}
-.ficha{
-  background:var(--papel);
-  border:2px solid var(--tinta);
-  padding:10px 16px;
-  box-shadow:4px 4px 0 var(--cielo);
-}
-.ficha:nth-child(1){transform:rotate(.8deg);}
-.ficha:nth-child(2){transform:rotate(-.9deg);}
-.ficha:nth-child(3){transform:rotate(.6deg);}
-.ficha small{display:block;font-size:.8rem;color:var(--tinta-suave);}
-.ficha b{display:flex;align-items:center;gap:9px;font-size:1.05rem;}
-.punto{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--tinta);}
-
-.linea{height:3px;background:var(--tinta);border-radius:2px;margin:1.6rem 0 1.8rem;}
 
 /* ---------- Secciones ---------- */
-.seccion{display:flex;align-items:center;gap:14px;margin:0 0 1rem;}
+.seccion{display:flex;align-items:center;gap:14px;margin:0 0 1.1rem;}
 .num{
-  width:38px;height:38px;flex:none;
+  width:42px;height:42px;flex:none;
   display:grid;place-items:center;
   border-radius:50%;
-  background:var(--ultramar);
-  color:#FCF8EC;
+  background:var(--azul);
+  color:#FFFBEF;
   font-weight:800;
+  font-size:1.2rem;
 }
-.num.b{background:var(--turquesa);color:var(--tinta);}
-.seccion-t{font-family:'Caveat Brush','Kalam',cursive;font-size:2rem;color:var(--tinta);line-height:1;}
-.seccion-l{flex:1;height:3px;background:var(--tinta);border-radius:2px;}
+.num.b{background:var(--morado);}
+.seccion-t{
+  font-family:'Delicious Handrawn','Caveat Brush',cursive;
+  font-size:2.3rem;
+  color:var(--azul);
+  line-height:1;
+}
+.seccion-l{flex:1;height:4px;background:var(--amarillo);border-radius:4px;}
 
 /* ---------- Barra lateral ---------- */
+[data-testid="stSidebar"][aria-expanded="true"]{
+  min-width:400px !important;
+  width:400px !important;
+}
 [data-testid="stSidebar"]{
-  background:linear-gradient(180deg,#F8E8C4,#F4DDA8);
-  border-right:2px solid rgba(139,90,43,.28);
+  background:#F6EBCB;
+  border-right:3px solid var(--azul);
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{
+  padding:1rem .9rem;
 }
 [data-testid="stSidebar"] label,
-[data-testid="stSidebar"] p{color:#5A3A22;}
+[data-testid="stSidebar"] p{color:var(--texto);}
 
 [class*="st-key-panel_"]{
-  background:linear-gradient(180deg,#FDF3DE,#F9EACB);
-  border:2px solid #EBD6A8;
-  border-radius:20px;
+  background:var(--papel);
+  border:3px solid var(--azul);
+  border-radius:24px;
   padding:16px 16px 18px;
-  box-shadow:0 3px 0 #E2CB9A, inset 0 2px 0 rgba(255,255,255,.75);
-  margin-bottom:6px;
+  box-shadow:5px 5px 0 var(--amarillo);
+  margin-bottom:16px;
 }
 .panel-t{
-  font-family:'Fredoka','Nunito',sans-serif;
-  font-weight:600;
-  font-size:1.5rem;
+  font-family:'Delicious Handrawn','Caveat Brush',cursive;
+  font-size:2rem;
   line-height:1.1;
-  color:#5A3A22;
-  margin:0 0 .7rem;
+  color:var(--azul);
+  margin:0 0 .8rem;
 }
 
-/* Paleta de pintura */
+/* Paleta de pintura plana (como la de tu referencia) */
 .st-key-paleta{
   position:relative;
-  width:100%;
-  aspect-ratio:300/236;
-  margin:.1rem 0 .2rem;
-  filter:drop-shadow(0 6px 4px rgba(90,58,34,.28));
+  background:var(--amarillo);
+  border-radius:48% 52% 50% 50% / 56% 52% 48% 44%;
+  padding:46px 26px 30px;
+  margin:.2rem 0 .6rem;
+  transform:rotate(-3deg);
 }
-.st-key-paleta_dibujo{position:absolute;top:0;left:0;width:100%;z-index:0;}
-.st-key-paleta_dibujo svg{width:100%;height:auto;display:block;}
-.st-key-paleta [class*="st-key-pig_"]{position:absolute;z-index:2;}
-.st-key-paleta [class*="st-key-pig_"]:hover{z-index:10;}
-.st-key-paleta [class*="st-key-pig_"] .stButton{width:100%;}
-.st-key-paleta [class*="st-key-pig_"] button{
-  width:100%;
-  aspect-ratio:1;
-  min-height:0;
-  height:auto;
-  padding:0;
+.st-key-paleta::before{
+  content:"";
+  position:absolute;
+  top:14px;right:22%;
+  width:54px;height:26px;
   border-radius:50%;
-  position:relative;
+  background:var(--papel);
+  transform:rotate(-12deg);
+}
+[class*="st-key-pig_"] [data-testid="stButton"],
+[class*="st-key-pig_"] .stButton{
+  width:100% !important;
+  display:flex;
+  justify-content:center;
+}
+[class*="st-key-pig_"] button{
+  width:100% !important;
+  max-width:84px;
+  aspect-ratio:1;
+  height:auto !important;
+  min-height:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  box-shadow:none !important;
+  transition:transform .12s ease;
+}
+[class*="st-key-pig_"] button p{font-size:0;line-height:0;}
+[class*="st-key-pig_"] button:hover{transform:scale(1.08) !important;}
+
+/* Botón "+" (color personalizado) */
+.st-key-pig_8 button{
+  background:var(--papel) !important;
+  border:4px dashed var(--azul) !important;
+  border-radius:50% !important;
   display:flex;
   align-items:center;
   justify-content:center;
-  box-shadow:inset 0 -5px 7px rgba(0,0,0,.22), 0 2px 3px rgba(0,0,0,.35);
-  transition:transform .12s ease;
 }
-.st-key-paleta [class*="st-key-pig_"] button p{display:none;}
-.st-key-paleta [class*="st-key-pig_"] button::after{
-  content:"";
-  position:absolute;
-  top:14%;left:20%;
-  width:34%;height:18%;
-  border-radius:50%;
-  background:rgba(255,255,255,.65);
-  transform:rotate(-28deg);
-}
-.st-key-paleta [class*="st-key-pig_"] button:hover{transform:scale(1.08) !important;}
-
-/* Botón "+" del centro (color personalizado) */
-.st-key-pig_6 button{
-  background:radial-gradient(circle at 34% 28%, #FFFDF5, #F6E7C6) !important;
-  border:3px solid #8A5A2B !important;
-}
-.st-key-paleta .st-key-pig_6 button::after{
+.st-key-pig_8 button::after{
   content:"+";
-  position:static;
-  width:auto;height:auto;
-  background:none;
-  transform:none;
-  font-family:'Fredoka','Nunito',sans-serif;
-  font-size:1.9rem;
-  font-weight:600;
+  font-family:'Delicious Handrawn','Nunito',sans-serif;
+  font-size:3rem;
   line-height:1;
-  color:#5A3A22;
+  color:var(--azul);
 }
 
-/* Globo con el nombre del pigmento */
-.st-key-paleta [class*="st-key-pig_"]::before{
-  position:absolute;
-  bottom:112%;
-  background:#FFF9EC;
-  border:2px solid #8A5A2B;
-  color:#5A3A22;
-  font-family:'Nunito',sans-serif;
-  font-weight:800;
-  font-size:.85rem;
-  padding:3px 11px;
-  border-radius:12px;
-  white-space:nowrap;
-  opacity:0;
-  pointer-events:none;
-  z-index:20;
-  transition:opacity .12s ease;
-}
-.st-key-paleta [class*="st-key-pig_"]:hover::before{opacity:1;}
-
-/* Trazos de tiza (grosor) */
-[class*="st-key-gro_"] .stButton{width:100%;}
+/* Grosor: barras que engordan */
+[class*="st-key-gro_"] [data-testid="stButton"],
+[class*="st-key-gro_"] .stButton{width:100% !important;}
 [class*="st-key-gro_"] button{
-  width:100%;
-  height:64px;
-  min-height:0;
-  padding:0;
+  width:100% !important;
+  height:62px !important;
+  min-height:0 !important;
+  padding:0 !important;
   display:flex;
   align-items:center;
   justify-content:center;
   background:transparent !important;
   border:3px solid transparent !important;
-  border-radius:12px;
+  border-radius:16px;
   box-shadow:none !important;
   transform:none !important;
 }
-[class*="st-key-gro_"] button:hover{background:rgba(240,147,43,.12) !important;}
-[class*="st-key-gro_"] button p{display:none;}
+[class*="st-key-gro_"] button:hover{background:#FFF1C8 !important;}
+[class*="st-key-gro_"] button p{font-size:0;line-height:0;}
 [class*="st-key-gro_"] button::after{
   content:"";
   display:block;
-  height:46px;
+  width:78%;
   border-radius:999px;
-  transform:rotate(32deg);
+  background:var(--azul);
 }
 
 /* Herramientas */
-[class*="st-key-tool_"] .stButton{width:100%;}
+[class*="st-key-tool_"] [data-testid="stButton"],
+[class*="st-key-tool_"] .stButton{width:100% !important;}
 [class*="st-key-tool_"] button{
-  width:100%;
-  height:64px;
-  min-height:0;
-  padding:0;
-  background-color:#F3E3C0 !important;
-  background-repeat:no-repeat !important;
-  background-position:center !important;
-  background-size:36px !important;
-  border:2px solid #E3CDA0 !important;
-  border-radius:14px;
+  width:100% !important;
+  height:52px !important;
+  min-height:0 !important;
+  padding:0 6px !important;
+  background:var(--papel) !important;
+  border:3px solid var(--azul) !important;
+  border-radius:999px;
   box-shadow:none !important;
   transform:none !important;
 }
-[class*="st-key-tool_"] button:hover{background-color:#F8EBCB !important;}
-[class*="st-key-tool_"] button p{display:none;}
+[class*="st-key-tool_"] button p{
+  font-weight:800;
+  font-size:1rem;
+  color:var(--azul);
+}
+[class*="st-key-tool_"] button:hover{background:#FFF1C8 !important;}
 
-/* Botones dibujados a mano */
+/* Botones generales: píldoras planas */
 .stButton > button{
   font-family:'Nunito',sans-serif;
   font-weight:800;
   font-size:1.05rem;
-  color:var(--tinta);
+  color:var(--azul);
   background:var(--papel);
-  border:2px solid var(--tinta);
-  border-radius:255px 15px 225px 15px / 15px 225px 15px 255px;
-  padding:.45rem 1.4rem;
-  box-shadow:3px 3px 0 var(--tinta);
+  border:3px solid var(--azul);
+  border-radius:999px;
+  padding:.45rem 1.6rem;
+  box-shadow:0 4px 0 var(--azul);
   transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
 }
 .stButton > button:hover{
-  background:var(--cielo);
-  color:var(--tinta);
-  border-color:var(--tinta);
-  transform:translate(-1px,-1px);
-  box-shadow:4px 4px 0 var(--tinta);
+  background:#FFF1C8;
+  color:var(--azul);
+  border-color:var(--azul);
+  transform:translateY(-1px);
+  box-shadow:0 5px 0 var(--azul);
 }
-.stButton > button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--tinta);}
+.stButton > button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--azul);}
 .st-key-interpretar .stButton > button{
-  background:var(--ultramar);
-  color:#FCF8EC;
-  font-size:1.2rem;
-  padding:.6rem 1.8rem;
-  box-shadow:4px 4px 0 var(--tinta);
+  background:var(--azul);
+  color:#FFFBEF;
+  font-size:1.25rem;
+  padding:.65rem 2rem;
+  border-color:var(--azul-osc);
+  box-shadow:0 5px 0 var(--azul-osc);
 }
-.st-key-interpretar .stButton > button p{color:#FCF8EC;}
-.st-key-interpretar .stButton > button:hover{background:#3C6BCB;}
+.st-key-interpretar .stButton > button p{color:#FFFBEF;}
+.st-key-interpretar .stButton > button:hover{background:#1F5FC6;}
 
 /* Campo de clave */
 [data-baseweb="input"]{
   background:var(--papel) !important;
-  border:2px solid var(--tinta) !important;
-  border-radius:8px !important;
+  border:3px solid var(--azul) !important;
+  border-radius:14px !important;
 }
-[data-baseweb="input"] input{background:transparent !important;color:var(--tinta);}
+[data-baseweb="input"] input{background:transparent !important;color:var(--texto);}
 
 /* ---------- Bloc de acuarela ---------- */
 .st-key-bloc{
@@ -599,22 +444,20 @@ html, .stApp{color-scheme:light;}
   background:#FFFDF5;
   margin-top:26px;
   padding:34px 22px 22px;
-  border-radius:6px 6px 16px 16px;
-  box-shadow:
-    0 1px 0 #E6DCC3,
-    8px 8px 0 var(--cielo),
-    0 0 0 2px var(--tinta);
+  border:3px solid var(--azul);
+  border-radius:22px;
+  box-shadow:9px 9px 0 var(--amarillo);
 }
 .st-key-bloc::before{
   content:"";
   position:absolute;
-  top:-12px;left:18px;right:18px;
+  top:-14px;left:26px;right:26px;
   height:28px;
-  background:radial-gradient(circle at 50% 60%, #1B2F52 0 4px, #C9D3E0 5px 7px, transparent 8px) 0 0 / 34px 28px repeat-x;
+  background:radial-gradient(circle at 50% 60%, #0A4AAE 0 4px, #FFFBEF 5px 7px, transparent 8px) 0 0 / 34px 28px repeat-x;
 }
 .st-key-bloc iframe{
-  border:1px solid rgba(27,47,82,.25);
-  border-radius:3px;
+  border:2px solid rgba(10,74,174,.25);
+  border-radius:6px;
   max-width:100%;
   color-scheme:light;
   background:#FCF8EC;
@@ -624,158 +467,137 @@ html, .stApp{color-scheme:light;}
 .libreta{
   position:relative;
   background-color:#FFFDF4;
-  background-image:repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(70,120,180,.30) 31px, rgba(70,120,180,.30) 32px);
+  background-image:repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(10,74,174,.22) 31px, rgba(10,74,174,.22) 32px);
   background-position:0 14px;
   background-repeat:repeat-y;
   padding:14px 20px 22px 74px;
   margin:1.4rem 0 1rem;
-  border-radius:4px 10px 10px 4px;
-  box-shadow:5px 5px 0 var(--cielo), 0 0 0 2px var(--tinta);
-  transform:rotate(.4deg);
+  border:3px solid var(--azul);
+  border-radius:8px 18px 18px 8px;
+  box-shadow:6px 6px 0 var(--morado);
   font-family:'Kalam',cursive;
   font-size:1.1rem;
   line-height:32px;
-  color:#2B2F6B;
+  color:#1F2A6B;
 }
 .libreta::before{
   content:"";
   position:absolute;
   top:0;bottom:0;left:52px;
   width:2px;
-  background:rgba(214,40,57,.5);
+  background:rgba(240,57,43,.55);
 }
 .libreta::after{
   content:"";
   position:absolute;
   top:0;bottom:0;left:12px;
   width:22px;
-  background:radial-gradient(circle at 50% 50%, #F4EBD9 0 8px, rgba(0,0,0,.2) 9px, transparent 10px) 0 28px / 22px 96px repeat-y;
+  background:radial-gradient(circle at 50% 50%, #FDF8EA 0 8px, rgba(10,74,174,.45) 9px, transparent 10px) 0 28px / 22px 96px repeat-y;
 }
 .libreta-titulo{
-  font-family:'Caveat Brush','Kalam',cursive;
-  font-size:1.8rem;
+  font-family:'Delicious Handrawn','Caveat Brush',cursive;
+  font-size:2rem;
   line-height:32px;
-  color:var(--ultramar);
+  color:var(--azul);
 }
 .libreta-texto{line-height:32px;}
 .libreta-texto, .libreta-titulo{margin:0;}
 
-/* ---------- Decoración fija ---------- */
-.gotas{
-  position:fixed;
-  top:0;right:0;
-  width:250px;height:auto;
-  pointer-events:none;
-  z-index:2;
-}
+/* ---------- Pincel lateral ---------- */
 .pincel{
   position:fixed;
-  right:8px;
+  right:10px;
   top:50%;
   transform:translateY(-50%);
-  height:88vh;
+  height:82vh;
   width:auto;
   pointer-events:none;
   z-index:2;
-  filter:drop-shadow(-4px 6px 6px rgba(27,47,82,.28));
 }
 
 @media (max-width:1100px){
   .pincel{display:none;}
   .block-container{padding-right:1.5rem;}
-  .hero h1{font-size:3.2rem;}
-  .hero-dabs{display:none;}
-}
-@media (max-width:1500px){
-  .barra-der{display:none;}
 }
 @media (prefers-reduced-motion:reduce){
-  .stButton > button, .st-key-paleta [class*="st-key-pig_"] button{transition:none;}
+  .stButton > button, [class*="st-key-pig_"] button{transition:none;}
 }
 </style>
 """
 
-SVG_GOTAS = mini("""
-<svg class="gotas" viewBox="0 0 260 270" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+SVG_BANNER = mini("""
+<svg class="banner" viewBox="0 0 1140 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Taller de arte">
 <defs>
-<filter id="aq" x="-20%" y="-20%" width="140%" height="140%">
-<feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="4" result="r"/>
-<feDisplacementMap in="SourceGraphic" in2="r" scale="9"/>
-</filter>
+<path id="mancha" d="M0 -20 C12 -26 26 -14 22 -2 C30 8 18 24 4 20 C-8 28 -26 14 -20 0 C-28 -10 -12 -24 0 -20Z"/>
 </defs>
-<g filter="url(#aq)" style="mix-blend-mode:multiply">
-<path d="M172 -10 C204 -2 244 14 262 40 L262 140 C246 150 226 146 214 128 C202 110 178 112 162 98 C140 80 138 52 148 32 C154 16 160 -4 172 -10Z" fill="#2E5BBA" opacity=".9"/>
-<path d="M196 130 C196 160 194 190 198 218 C199 230 214 230 215 218 C218 190 214 160 214 128Z" fill="#2E5BBA" opacity=".88"/>
-<path d="M70 22 C88 6 118 12 124 34 C130 56 108 70 88 66 C66 62 54 38 70 22Z" fill="#2BB5C6" opacity=".88"/>
-<path d="M92 64 C92 82 91 96 94 108 C95 116 105 116 106 108 C108 96 104 82 104 66Z" fill="#2BB5C6" opacity=".88"/>
-<path d="M120 120 C134 108 156 114 158 134 C160 152 140 164 124 156 C110 150 108 130 120 120Z" fill="#F7C325" opacity=".92"/>
-<circle cx="52" cy="92" r="4" fill="#2BB5C6"/>
-<circle cx="132" cy="84" r="3" fill="#2E5BBA"/>
-<circle cx="236" cy="176" r="5" fill="#2E5BBA"/>
-<circle cx="104" cy="170" r="3.5" fill="#F7C325"/>
-<circle cx="170" cy="190" r="2.5" fill="#1B2F52"/>
+
+<path d="M1040 110 C1090 100 1140 105 1140 105 L1140 420 C1100 440 1050 400 1060 350 C1070 300 1000 270 1000 220 C1000 170 1010 125 1040 110Z" fill="#6A4FA8"/>
+<path d="M770 0 L1060 0 C1068 36 1104 56 1112 96 C1096 128 1030 130 990 122 C940 152 884 142 846 104 C796 84 748 62 770 0Z" fill="#0A4AAE"/>
+<g stroke="#FDB92D" stroke-width="30" stroke-linecap="round" fill="none">
+<path d="M1010 170 L955 112"/><path d="M1010 170 L1062 98"/><path d="M1010 170 L1098 160"/>
+<path d="M1010 170 L1056 236"/><path d="M1010 170 L944 214"/>
+</g>
+<circle cx="1010" cy="170" r="44" fill="#FDB92D"/>
+<circle cx="944" cy="304" r="17" fill="#FDB92D"/>
+
+<path d="M0 150 C40 130 85 150 95 190 C135 185 165 215 150 258 C140 296 95 330 40 335 C20 338 0 330 0 330Z" fill="#6A4FA8"/>
+<path d="M44 140 C34 108 48 86 56 64 C64 90 74 116 64 146Z" fill="#6A4FA8"/>
+<ellipse cx="40" cy="112" rx="8" ry="17" fill="#6A4FA8" transform="rotate(-8 40 112)"/>
+<ellipse cx="270" cy="246" rx="36" ry="14" fill="#6A4FA8" transform="rotate(-24 270 246)"/>
+<circle cx="214" cy="330" r="9" fill="#6A4FA8"/>
+<circle cx="190" cy="218" r="6" fill="#6A4FA8"/>
+
+<path d="M120 420 C130 380 190 372 215 352 C240 318 310 322 328 366 C380 372 440 392 428 420Z" fill="#7FBC7B"/>
+
+<g transform="translate(150 322) rotate(-32)">
+<ellipse cx="0" cy="0" rx="120" ry="84" fill="#FDB92D"/>
+<ellipse cx="-46" cy="22" rx="21" ry="12" fill="#FFFBEF"/>
+<use href="#mancha" x="-72" y="-34" fill="#7FBC7B" transform="scale(1.15)"/>
+<use href="#mancha" x="-10" y="-46" fill="#F0392B" transform="scale(1.1)"/>
+<use href="#mancha" x="48" y="-32" fill="#FFFBEF" transform="scale(1.15)"/>
+<use href="#mancha" x="76" y="14" fill="#6A4FA8" transform="scale(1)"/>
+<use href="#mancha" x="22" y="46" fill="#F0392B" transform="scale(1.1)"/>
+<use href="#mancha" x="-30" y="52" fill="#7FBC7B" transform="scale(.95)"/>
+</g>
+
+<g fill="#0A4AAE" text-anchor="middle" style="font-family:'Delicious Handrawn','Caveat Brush',cursive">
+<text x="560" y="190" font-size="150">TALLER</text>
+<text x="404" y="318" font-size="104" style="font-family:'Caveat','Delicious Handrawn',cursive;font-weight:600">de</text>
+<text x="640" y="334" font-size="140">ARTE</text>
+</g>
+
+<g fill="none" stroke="#FDB92D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+<path d="M742 300 L744 301"/><path d="M762 306 L764 307"/>
+<path d="M792 318 C830 334 868 350 906 366 C930 374 926 342 944 340 C966 340 1010 366 1056 392"/>
+<path d="M1020 392 L1058 394 L1050 356"/>
 </g>
 </svg>
 """)
 
 SVG_PINCEL = mini("""
 <svg class="pincel" viewBox="0 0 130 720" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-<defs>
-<linearGradient id="madera" x1="0" x2="1">
-<stop offset="0" stop-color="#E0A862"/><stop offset=".5" stop-color="#B8763A"/><stop offset="1" stop-color="#7C4A22"/>
-</linearGradient>
-<linearGradient id="metal" x1="0" x2="1">
-<stop offset="0" stop-color="#9AA0A6"/><stop offset=".35" stop-color="#F4F4F2"/><stop offset=".7" stop-color="#B4B9BD"/><stop offset="1" stop-color="#7D8388"/>
-</linearGradient>
-<linearGradient id="cerda" x1="0" x2="1">
-<stop offset="0" stop-color="#5A3A24"/><stop offset=".5" stop-color="#8A5A3A"/><stop offset="1" stop-color="#4A2F1D"/>
-</linearGradient>
-<filter id="aq2" x="-30%" y="-10%" width="160%" height="120%">
-<feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="3" seed="9" result="r"/>
-<feDisplacementMap in="SourceGraphic" in2="r" scale="7"/>
-</filter>
-</defs>
 <g transform="rotate(7 65 360)">
-<path d="M56 24 C56 8 74 8 74 24 C79 120 88 230 80 346 L50 346 C42 230 51 120 56 24Z" fill="url(#madera)"/>
-<path d="M62 40 C66 120 70 220 66 340" stroke="#7C4A22" stroke-width=".9" fill="none" opacity=".5"/>
-<path d="M69 44 C73 120 78 220 74 336" stroke="#F0C48A" stroke-width=".8" fill="none" opacity=".45"/>
-<circle cx="65" cy="26" r="3.5" fill="#4A2A12"/>
-<path d="M55 72 Q65 78 76 72" stroke="#2E5BBA" stroke-width="5" fill="none" stroke-linecap="round"/>
-<path d="M55 84 Q66 90 77 84" stroke="#F7C325" stroke-width="5" fill="none" stroke-linecap="round"/>
-<path d="M56 96 Q67 102 78 96" stroke="#2BB5C6" stroke-width="5" fill="none" stroke-linecap="round"/>
-<path d="M50 346 L80 346 L84 408 L46 408Z" fill="url(#metal)"/>
-<path d="M49 362 L81 362" stroke="#6D7378" stroke-width="1.5"/>
-<path d="M48 376 L82 376" stroke="#6D7378" stroke-width="1.5"/>
-<path d="M46 408 L84 408" stroke="#5E6368" stroke-width="3"/>
-<path d="M46 408 L84 408 C88 448 78 492 66 540 C65 546 63 546 62 540 C50 492 42 448 46 408Z" fill="url(#cerda)"/>
-<path d="M52 478 C58 490 72 490 78 478 C74 510 70 530 65 548 C60 530 54 510 52 478Z" fill="#2BB5C6"/>
-<g filter="url(#aq2)">
-<path d="M64 548 C26 580 104 610 56 644 S84 692 50 716" fill="none" stroke="#2BB5C6" stroke-width="16" stroke-linecap="round" opacity=".92"/>
-<path d="M64 552 C34 584 96 614 60 640" fill="none" stroke="#2E5BBA" stroke-width="6" stroke-linecap="round" opacity=".75"/>
-<path d="M70 560 C96 586 52 614 82 650" fill="none" stroke="#F7C325" stroke-width="5" stroke-linecap="round" opacity=".85"/>
-<path d="M58 660 C40 676 70 690 56 708" fill="none" stroke="#6B3FA0" stroke-width="5" stroke-linecap="round" opacity=".75"/>
-</g>
-<circle cx="98" cy="556" r="4" fill="#2BB5C6"/>
-<circle cx="26" cy="598" r="3" fill="#2E5BBA"/>
-<circle cx="104" cy="628" r="3.5" fill="#F7C325"/>
-<circle cx="22" cy="660" r="2.5" fill="#6B3FA0"/>
-</g>
-</svg>
-""")
-
-SVG_DABS = mini("""
-<svg class="hero-dabs" viewBox="0 0 120 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-<g style="mix-blend-mode:multiply">
-<path d="M18 40 C14 14 44 2 64 12 C86 22 92 50 76 66 C60 80 24 72 18 40Z" fill="#2E5BBA"/>
-<path d="M54 56 C54 40 78 36 92 48 C106 60 100 84 82 90 C64 94 54 74 54 56Z" fill="#F7C325"/>
-<path d="M10 100 C16 84 40 82 52 94 C64 106 58 128 40 134 C22 138 6 118 10 100Z" fill="#2BB5C6"/>
+<path d="M56 24 C56 8 74 8 74 24 C79 120 88 230 80 346 L50 346 C42 230 51 120 56 24Z" fill="#0A4AAE"/>
+<circle cx="65" cy="26" r="3.5" fill="#FDF8EA"/>
+<path d="M54 92 Q66 98 78 92" stroke="#FDB92D" stroke-width="7" fill="none" stroke-linecap="round"/>
+<path d="M55 108 Q67 114 79 108" stroke="#7FBC7B" stroke-width="7" fill="none" stroke-linecap="round"/>
+<path d="M50 346 L80 346 L84 408 L46 408Z" fill="#C9D0DA"/>
+<path d="M48 366 L82 366 M47 386 L83 386" stroke="#9AA4B2" stroke-width="3"/>
+<path d="M46 408 L84 408 C88 448 78 492 66 540 C65 546 63 546 62 540 C50 492 42 448 46 408Z" fill="#5A3A24"/>
+<path d="M52 478 C58 490 72 490 78 478 C74 510 70 530 65 548 C60 530 54 510 52 478Z" fill="#6A4FA8"/>
+<path d="M64 548 C26 580 104 610 56 644 S84 692 50 716" fill="none" stroke="#6A4FA8" stroke-width="15" stroke-linecap="round"/>
+<path d="M70 560 C96 586 52 614 82 650" fill="none" stroke="#FDB92D" stroke-width="6" stroke-linecap="round"/>
+<path d="M58 660 C40 676 70 690 56 708" fill="none" stroke="#7FBC7B" stroke-width="6" stroke-linecap="round"/>
+<circle cx="98" cy="556" r="4" fill="#6A4FA8"/>
+<circle cx="26" cy="598" r="3" fill="#6A4FA8"/>
+<circle cx="104" cy="628" r="3.5" fill="#FDB92D"/>
 </g>
 </svg>
 """)
 
 st.markdown(CSS_BASE, unsafe_allow_html=True)
 st.markdown(css_dinamico(), unsafe_allow_html=True)
-st.markdown(SVG_GOTAS + SVG_PINCEL, unsafe_allow_html=True)
+st.markdown(SVG_PINCEL, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Barra lateral: paleta y herramientas
@@ -784,16 +606,21 @@ with st.sidebar:
     with st.container(key="panel_color"):
         st.markdown('<div class="panel-t">Color de pintura</div>', unsafe_allow_html=True)
         with st.container(key="paleta"):
-            with st.container(key="paleta_dibujo"):
-                st.markdown(svg_paleta(), unsafe_allow_html=True)
-            for i, (nombre, _) in enumerate(PIGMENTOS):
-                with st.container(key=f"pig_{i}"):
-                    st.button(nombre, key=f"btn_pig_{i}", on_click=elegir_pigmento, args=(i,))
-            with st.container(key="pig_6"):
-                st.button("Color personalizado", key="btn_pig_6", on_click=elegir_pigmento, args=(6,))
-        if st.session_state.pig == 6:
+            for fila in range(3):
+                columnas = st.columns(3, gap="small")
+                for c in range(3):
+                    i = fila * 3 + c
+                    with columnas[c]:
+                        with st.container(key=f"pig_{i}"):
+                            if i < len(PIGMENTOS):
+                                nombre = PIGMENTOS[i][0]
+                            else:
+                                nombre = "Color personalizado"
+                            boton(nombre, key=f"btn_pig_{i}", help=nombre,
+                                  on_click=elegir_pigmento, args=(i,))
+        if st.session_state.pig == IDX_PERSONALIZADO:
             st.session_state.custom_hex = st.color_picker(
-                "Color personalizado",
+                "Elige tu propio color",
                 value=st.session_state.custom_hex,
                 key="selector_personalizado",
             )
@@ -804,8 +631,8 @@ with st.sidebar:
         for i, (nombre, _) in enumerate(GROSORES):
             with cols_grosor[i]:
                 with st.container(key=f"gro_{i}"):
-                    st.button(nombre, key=f"btn_gro_{i}", help=nombre,
-                              on_click=elegir_grosor, args=(i,))
+                    boton(nombre, key=f"btn_gro_{i}", help=nombre,
+                          on_click=elegir_grosor, args=(i,))
 
     with st.container(key="panel_herramienta"):
         st.markdown('<div class="panel-t">Herramienta</div>', unsafe_allow_html=True)
@@ -813,8 +640,8 @@ with st.sidebar:
         for i, nombre in enumerate(HERRAMIENTAS):
             with cols_tool[i]:
                 with st.container(key=f"tool_{i}"):
-                    st.button(nombre, key=f"btn_tool_{i}", help=nombre,
-                              on_click=elegir_herramienta, args=(i,))
+                    boton(ETIQUETA_HERRAMIENTA[i], key=f"btn_tool_{i}", help=nombre,
+                          on_click=elegir_herramienta, args=(i,))
 
     with st.container(key="panel_ajustes"):
         st.markdown('<div class="panel-t">Ajustes</div>', unsafe_allow_html=True)
@@ -829,63 +656,22 @@ with st.sidebar:
 herramienta = list(HERRAMIENTAS)[st.session_state.tool]
 
 # ---------------------------------------------------------------------------
-# Encabezado: barra, hero y fichas
+# Banner y lema
 # ---------------------------------------------------------------------------
-if st.session_state.pig == 6:
-    pig_nombre, pig_hex = "Color personalizado", st.session_state.custom_hex
-else:
-    pig_nombre, pig_hex = PIGMENTOS[st.session_state.pig]
-gro_nombre, gro_px = GROSORES[st.session_state.gro]
-
+st.markdown(SVG_BANNER, unsafe_allow_html=True)
 st.markdown(
-    mini("""
-    <div class="barra">
-    <div class="barra-izq">
-    <span class="barra-icono">
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 C12 2 5 10 5 15 a7 7 0 0 0 14 0 C19 10 12 2 12 2Z" fill="#1B2F52"/></svg>
-    </span>
-    <span class="barra-titulo">Taller de arte</span>
-    </div>
-    <div class="barra-der">Modelo GPT-4o mini · respuesta en español</div>
-    </div>
-    """),
+    '<p class="lema">Dibuja lo que quieras y la máquina lo interpretará.</p>',
     unsafe_allow_html=True,
 )
 
-col_hero, col_fichas = st.columns([2.3, 1], gap="large")
-with col_hero:
-    st.markdown(
-        mini(f"""
-        <div class="hero">
-        {SVG_DABS}
-        <div>
-        <span class="chip">Taller de dibujo con visión de IA</span>
-        <h1>Dibuja lo que quieras.<span class="l2">La máquina lo interpretará.</span></h1>
-        <p>Elige un pigmento en la paleta de la izquierda, pinta sobre el bloc y pulsa
-        Interpretar. La máquina describe tu dibujo en una libreta y te lo devuelve con acabado de acuarela.</p>
-        </div>
-        </div>
-        """),
-        unsafe_allow_html=True,
-    )
-with col_fichas:
-    st.markdown(
-        mini(f"""
-        <div class="fichas">
-        <div class="ficha"><small>Pigmento</small><b><span class="punto" style="background:{pig_hex}"></span>{pig_nombre}</b></div>
-        <div class="ficha"><small>Pincel</small><b>{gro_nombre} · {gro_px} px</b></div>
-        <div class="ficha"><small>Herramienta</small><b>{"Goma de borrar" if goma else herramienta}</b></div>
-        </div>
-        """),
-        unsafe_allow_html=True,
-    )
-
-st.markdown('<div class="linea"></div>', unsafe_allow_html=True)
-
 # ---------------------------------------------------------------------------
-# Dos secciones: lienzo y interpretación
+# Dos secciones: lienzo e interpretación
 # ---------------------------------------------------------------------------
-col_lienzo, col_analisis = st.columns([1.65, 1], gap="large")
+if st.session_state.pig == IDX_PERSONALIZADO:
+    pig_hex = st.session_state.custom_hex
+else:
+    pig_hex = PIGMENTOS[st.session_state.pig][1]
+gro_px = GROSORES[st.session_state.gro][1]
 
 r, g, b = hex_a_rgb(pig_hex)
 if goma:
@@ -898,6 +684,8 @@ else:
     relleno = f"rgba({r},{g},{b},{alfa * 0.35})"
     ancho = gro_px
 
+col_lienzo, col_analisis = st.columns([1.65, 1], gap="large")
+
 with col_lienzo:
     st.markdown(seccion(1, "Lienzo"), unsafe_allow_html=True)
     with st.container(key="bloc"):
@@ -906,8 +694,8 @@ with col_lienzo:
             stroke_width=ancho,
             stroke_color=trazo,
             background_color=PAPEL_HEX,
-            height=460,
-            width=660,
+            height=470,
+            width=700,
             drawing_mode=HERRAMIENTAS[herramienta],
             key=f"lienzo_{st.session_state.lienzo}",
         )
