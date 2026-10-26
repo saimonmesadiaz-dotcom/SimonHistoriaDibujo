@@ -1,9 +1,12 @@
 import base64
 import html
 import io
+import os
 import random
+
 import numpy as np
 import streamlit as st
+from openai import OpenAI
 from PIL import Image, ImageFilter
 from streamlit_drawable_canvas import st_canvas
 
@@ -11,78 +14,66 @@ from streamlit_drawable_canvas import st_canvas
 # Configuración de página
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Taller de Arte y Creación",
+    page_title="Espacio Creativo - Taller de Arte",
     page_icon="🎨",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
-# Constantes y Paletas de Pigmentos
+# Constantes y Estética del Portafolio
 # ---------------------------------------------------------------------------
-TINTA = "#1A2B4C"  # Azul profundo institucional
-SEL = "#E8851E"    # Naranja cálido de selección
+TINTA = "#0F2B5B"       # Azul oscuro institucional para alto contraste
+SEL = "#E8912D"         # Naranja cálido de selección
+CREMA_FONDO = "#F7F2E6" # Tono de fondo principal estilo portafolio
+TARJETA_BG = "#FFFBF7"  # Tono crema para tarjetas y contenedores
 
 SLOTS = [
-    ("Azul Ultramar", "#1F5BC4"),
-    ("Rojo Carmín", "#E0393E"),
-    ("Verde Botánica", "#3E9E5F"),
-    ("Amarillo Oro", "#F5C02A"),
-    ("Naranja Taller", "#F28A2E"),
-    ("Rosa Pastel", "#EE7FAE"),
-    ("Morado Iris", "#7B4FB8"),
-    ("Negro Carbón", "#26211F"),
+    ("Azul", "#1F5BC4"),
+    ("Rojo carmín", "#E0393E"),
+    ("Verde", "#3E9E5F"),
+    ("Amarillo", "#F5C02A"),
+    None,  # Slot 4: Botón "+" (color personalizado)
+    ("Naranja", "#F28A2E"),
+    ("Rosa", "#EE7FAE"),
+    ("Morado", "#7B4FB8"),
+    ("Negro", "#26211F"),
     ("Turquesa", "#1FB5C5"),
     ("Celeste", "#6EC6F2"),
     ("Lima", "#A5C93B"),
-    ("Café Siena", "#8A5530"),
+    ("Café", "#8A5530"),
     ("Burdeos", "#8E1F3D"),
-    ("Blanco Tiza", "#FFFFFF"),
-    None,  # Slot 14: Selector de color personalizado (+)
+    ("Blanco tiza", "#FFFFFF"),
 ]
-IDX_PERSONALIZADO = 14
+IDX_PERSONALIZADO = 4
 
 GROSORES = [("Muy fino", 2), ("Fino", 5), ("Medio", 10), ("Grueso", 18), ("Brocha", 32)]
-MUESTRA_GROSOR = [3, 6, 10, 15, 22]
-
-HERRAMIENTAS = {"Pincel": "freedraw", "Línea": "line", "Rectángulo": "rect", "Círculo": "circle"}
-
-PAPELES = ["Liso", "Rayado", "Cuadros", "Puntos"]
+HERRAMIENTAS = {"Pincel libre": "freedraw", "Rectángulo": "rect", "Círculo": "circle"}
 COLORES_PAPEL = [
-    ("Hueso", "#FDFBF7"),
-    ("Crema", "#F7F2E6"),
-    ("Blanco Pura", "#FFFFFF"),
-    ("Kraft", "#EAD7B7"),
+    ("Hueso", "#EDE5D1"),
+    ("Crema", "#FCF8EC"),
+    ("Blanco", "#FFFFFF"),
+    ("Kraft", "#E5D2AC"),
 ]
-MESAS = [
-    ("Roble Cálido", "#D9B27C"),
-    ("Nogal Oscuro", "#8C5A3C"),
-    ("Cerezo Suave", "#C88A5E"),
-]
+MESAS = [("Nogal claro", "#C99A62"), ("Roble", "#D9B27C"), ("Cerezo", "#A8683F")]
 ACABADOS = ["Normal", "Acuarela", "Tiza"]
-
-FORMATOS = [
-    ("Clásico", 720, 480),
-    ("Panorámico", 840, 360),
-    ("Cuadrado", 560, 560),
-    ("Vertical", 460, 640),
-]
 
 # ---------------------------------------------------------------------------
 # Inicialización del Estado
 # ---------------------------------------------------------------------------
 for clave, valor in {
     "lienzo": 0,
-    "nota_titulo": "Mis Inspiraciones",
-    "nota_texto": "Apunta aquí tus ideas, colores favoritos o el título de tu próxima obra...",
+    "nota_titulo": "Mi obra maestra",
+    "historia": "",
     "pig": 0,
     "gro": 2,
     "tool": 0,
-    "papel": 0,
+    "papel": 1,
     "papel_color": 0,
     "mesa": 0,
     "acabado": 0,
     "custom_hex": "#E873A5",
+    "api_key": "",
     "lienzo_ancho": 720,
     "lienzo_alto": 480,
 }.items():
@@ -90,284 +81,275 @@ for clave, valor in {
         st.session_state[clave] = valor
 
 # ---------------------------------------------------------------------------
-# Utilidades de Color e Imagen
+# Utilidades de Imagen
 # ---------------------------------------------------------------------------
 def hex_a_rgb(hex_):
     hex_ = hex_.lstrip("#")
     return tuple(int(hex_[i:i + 2], 16) for i in (0, 2, 4))
 
-def mezcla(hex_, destino, t):
-    r, g, b = hex_a_rgb(hex_)
-    return "#%02x%02x%02x" % (
-        int(r + (destino[0] - r) * t),
-        int(g + (destino[1] - g) * t),
-        int(b + (destino[2] - b) * t),
-    )
-
-def imagen_del_lienzo(datos, papel_rgb):
+def imagen_del_lienzo(datos, papel):
     img = Image.fromarray(np.array(datos).astype("uint8"), "RGBA")
-    fondo = Image.new("RGBA", img.size, tuple(papel_rgb) + (255,))
+    fondo = Image.new("RGBA", img.size, tuple(papel) + (255,))
     fondo.alpha_composite(img)
     return fondo.convert("RGB")
 
-def _desenfocar(a, radio):
-    im = Image.fromarray(a.astype("uint8")).filter(ImageFilter.GaussianBlur(radio))
-    return np.array(im).astype(np.float32)
-
-def _ruido_suave(h, w, celda, rng):
-    g = rng.random((h // celda + 2, w // celda + 2)).astype(np.float32)
-    g = Image.fromarray((g * 255).astype("uint8")).resize((w, h), Image.BICUBIC)
-    return np.array(g).astype(np.float32) / 255
-
-def aplicar_acuarela(img, papel_rgb):
-    arr = np.array(img.convert("RGB")).astype(np.float32)
-    h, w, _ = arr.shape
-    papel_arr = np.array(papel_rgb, dtype=np.float32)
-    carga = np.clip(papel_arr - arr, 0, 255)
-    lavado = _desenfocar(carga, 2.4)
-    borde = np.clip(_desenfocar(carga, 1.0) - _desenfocar(carga, 6.0), 0, 255)
-    rng = np.random.default_rng(7)
-    grano = (0.78 + 0.44 * _ruido_suave(h, w, 6, rng))[..., None]
-    total = (lavado * 0.95 + borde * 0.55) * grano
-    fibra = rng.normal(0, 2.2, (h, w, 1)).astype(np.float32)
-    return Image.fromarray(np.clip(papel_arr - total + fibra, 0, 255).astype("uint8"))
-
-def aplicar_tiza(img, papel_rgb):
-    arr = np.array(img.convert("RGB")).astype(np.float32)
-    h, w, _ = arr.shape
-    papel_arr = np.array(papel_rgb, dtype=np.float32)
-    carga = np.clip(papel_arr - arr, 0, 255)
-    suave = _desenfocar(carga, 1.1)
-    rng = np.random.default_rng(11)
-    fino = np.clip((rng.random((h, w, 1)).astype(np.float32) - 0.25) / 0.55, 0, 1)
-    veta = (0.75 + 0.5 * _ruido_suave(h, w, 3, rng))[..., None]
-    total = suave * (0.35 + 0.65 * fino) * veta
-    return Image.fromarray(np.clip(papel_arr - total, 0, 255).astype("uint8"))
+def a_base64(img):
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 # ---------------------------------------------------------------------------
-# Estilos CSS Exquisitos y Modernos
+# Estilos CSS (Estética idéntica al portafolio: tonos crema, serifas y tarjetas)
 # ---------------------------------------------------------------------------
-mesa_actual_hex = MESAS[st.session_state.mesa][1]
-pigmento_actual = st.session_state.custom_hex if st.session_state.pig == IDX_PERSONALIZADO else SLOTS[st.session_state.pig][1]
-papel_actual_hex = COLORES_PAPEL[st.session_state.papel_color][1]
-
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500;1,700&family=Lora:ital,wght@0,400;0,600;1,400;1,600&display=swap');
 
 :root {{
     --tinta: {TINTA};
+    --tarjeta: {TARJETA_BG};
+    --borde: #E4CC93;
     --sel: {SEL};
-    --mesa: {mesa_actual_hex};
-    --papel: {papel_actual_hex};
 }}
 
-.stApp {{
-    background-color: var(--mesa);
-    background-image: radial-gradient(rgba(0,0,0,0.08) 1px, transparent 0);
-    background-size: 24px 24px;
+html, .stApp {{
+    color-scheme: light;
+    background-color: {CREMA_FONDO} !important;
 }}
 
+[data-testid="stAppViewContainer"], [data-testid="stMain"], .main {{
+    background: {CREMA_FONDO} !important;
+}}
+
+.stApp, .stApp p, .stApp label, .stApp li,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stCaptionContainer"] {{
+    font-family: 'Lora', Georgia, serif;
+    color: var(--tinta);
+}}
+
+.stApp label p {{ font-weight: 600; }}
 [data-testid="stHeader"] {{ background: transparent; }}
+.block-container {{ max-width: 1300px; padding: 4rem 2rem 5rem; }}
+
+/* Barra lateral estilo portafolio */
 [data-testid="stSidebar"] {{
-    background: #FFFDF9;
-    border-right: 1px solid rgba(0,0,0,0.08);
+    background: linear-gradient(180deg, #FCEFC9, #F7E2A8);
+    border-right: 2px solid rgba(160,110,40,.3);
+}}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{ padding: 1.5rem 1.2rem; }}
+
+/* Tarjetas contenedoras elegantes */
+.portfolio-card {{
+    background: var(--tarjeta);
+    border: 2px solid var(--borde);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 10px 25px -8px rgba(110,70,20,.15);
+    margin-bottom: 1.5rem;
 }}
 
-/* Tipografía general */
-h1, h2, h3, .atelier-title {{
-    font-family: 'Playfair Display', Georgia, serif !important;
+.port-title {{
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 700;
+    font-size: 2.2rem;
     color: var(--tinta);
-}}
-p, label, span, .stApp {{
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    color: var(--tinta);
+    line-height: 1.2;
+    margin-bottom: 0.5rem;
 }}
 
-/* Tarjetas de taller estilizadas */
-.atelier-card {{
-    background: #FFFFFF;
-    border: 1px solid rgba(26, 43, 76, 0.12);
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);
+.port-subtitle {{
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-size: 1.15rem;
+    color: #4A5568;
     margin-bottom: 1.2rem;
 }}
 
-/* Botones personalizados de herramientas */
-.stButton button {{
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    transition: all 0.2s ease !important;
-}}
-.stButton button:hover {{
-    border-color: var(--sel) !important;
-    color: var(--sel) !important;
-    transform: translateY(-1px);
+/* Cuadro de texto de la historia (Alto contraste: fondo crema, letra azul oscuro) */
+.story-box {{
+    background-color: #FCF8EC;
+    border: 2px solid #D3C9AB;
+    border-radius: 14px;
+    padding: 20px;
+    font-family: 'Lora', Georgia, serif;
+    color: #0F2B5B;
+    font-size: 1.05rem;
+    line-height: 1.6;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.03);
+    margin-top: 1rem;
 }}
 
-/* Lienzo marco de madera/cuaderno */
-.canvas-container {{
-    background: #FFFFFF;
-    padding: 24px;
-    border-radius: 16px;
-    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    border: 1px solid rgba(0,0,0,0.08);
+/* Botones personalizados estilo portafolio */
+.stButton > button {{
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 700;
+    color: #0F2B5B;
+    background: #FFF9E8;
+    border: 2px solid #0F2B5B;
+    border-radius: 999px;
+    padding: 0.5rem 1.5rem;
+    transition: all 0.2s ease;
+}}
+.stButton > button:hover {{
+    background: #FBEFCB;
+    border-color: #E8912D;
+    color: #E8912D;
+}}
+
+[data-baseweb="input"] {{
+    background: #FFF9E8 !important;
+    border: 2px solid #0F2B5B !important;
+    border-radius: 12px !important;
 }}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Barra Lateral (Panel del Artista)
+# Barra Lateral - Herramientas y Paleta
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("## 🎨 Rincón del Artista")
-    st.markdown("Tu estudio creativo personal.")
+    st.markdown("### 🎨 Taller de Pintura")
+    st.markdown("Elige tus colores y herramientas favoritas.")
     
     st.markdown("---")
-    
-    # 1. Selección de Herramientas
-    st.markdown("### 🖌️ Herramienta")
-    cols_tool = st.len = st.columns(2)
-    for i, (nombre, val) in enumerate(HERRAMIENTAS.items()):
-        col = cols_tool[i % 2]
-        with col:
-            if st.button(nombre, use_container_width=True, key=f"tool_{i}"):
-                st.session_state.tool = i
-    
+    st.markdown("#### 🔑 Clave OpenAI")
+    st.session_state.api_key = st.text_input(
+        "API Key", 
+        type="password", 
+        value=st.session_state.api_key,
+        help="Introduce tu clave de OpenAI para que la IA cree cuentos de tus dibujos."
+    )
+
     st.markdown("---")
-    
-    # 2. Paleta de Colores
-    st.markdown("### 🎨 Paleta de Pigmentos")
-    cols_paleta = st.columns(5)
+    st.markdown("#### 🖌️ Herramienta")
+    for nombre, val in HERRAMIENTAS.items():
+        if st.button(nombre, use_container_width=True):
+            st.session_state.tool = list(HERRAMIENTAS.values()).index(val)
+
+    st.markdown("---")
+    st.markdown("#### 🎨 Paleta de Pigmentos")
+    cols_p = st.columns(4)
     for i, slot in enumerate(SLOTS):
-        col = cols_paleta[i % 5]
+        col = cols_p[i % 4]
         with col:
             if slot is None:
                 if st.button("➕", key=f"pig_{i}", help="Color personalizado"):
                     st.session_state.pig = i
             else:
-                nombre_c, hex_c = slot
-                if st.button(" ", key=f"pig_{i}", help=nombre_c):
+                nom, hex_c = slot
+                if st.button("●", key=f"pig_{i}", help=nom):
                     st.session_state.pig = i
-                    
+
     if st.session_state.pig == IDX_PERSONALIZADO:
-        st.session_state.custom_hex = st.color_picker("Elige tu tono exclusivo", st.session_state.custom_hex)
+        st.session_state.custom_hex = st.color_picker("Color mágico", st.session_state.custom_hex)
 
     st.markdown("---")
-
-    # 3. Grosor del Pincel
-    st.markdown("### ✒️ Grosor del trazo")
-    cols_gro = st.columns(len(GROSORES))
+    st.markdown("#### ✒️ Grosor del Pincel")
+    cols_g = st.columns(len(GROSORES))
     for i, (nombre_g, val_g) in enumerate(GROSORES):
-        with cols_gro[i]:
-            if st.button(nombre_g[:3], key=f"gro_{i}", help=nombre_g, use_container_width=True):
+        with cols_g[i]:
+            if st.button(nombre_g[:3], key=f"gro_{i}", use_container_width=True):
                 st.session_state.gro = i
 
-    st.markdown("---")
-
-    # 4. Configuración del Papel y Lienzo
-    st.markdown("### 📄 Formato y Papel")
-    
-    f_opciones = [f[0] for f in FORMATOS]
-    f_sel = st.selectbox("Formato del Lienzo", f_opciones, index=0)
-    for nombre_f, w_f, h_f in FORMATOS:
-        if nombre_f == f_sel:
-            st.session_state.lienzo_ancho = w_f
-            st.session_state.lienzo_alto = h_f
-
-    p_col_opciones = [p[0] for p in COLORES_PAPEL]
-    p_col_sel = st.selectbox("Tono del Papel", p_col_opciones, index=0)
-    for idx_p, (nombre_pc, _) in enumerate(COLORES_PAPEL):
-        if nombre_pc == p_col_sel:
-            st.session_state.papel_color = idx_p
-
-    mesa_sel = st.selectbox("Mesa de Trabajo", [m[0] for m in MESAS], index=0)
-    for idx_m, (nombre_m, _) in enumerate(MESAS):
-        if nombre_m == mesa_sel:
-            st.session_state.mesa = idx_m
-
-    st.markdown("---")
-
-    # 5. La Libretica del Artista (Notas)
-    st.markdown("### 📖 Libretica de Bocetos")
-    st.session_state.nota_titulo = st.text_input("Título de la obra", st.session_state.nota_titulo)
-    st.session_state.nota_texto = st.text_area("Notas o inspiración", st.session_state.nota_texto, height=100)
-
-
 # ---------------------------------------------------------------------------
-# Panel Principal (Área de Dibujo y Taller)
+# Panel Principal (Estilo Portafolio y Cuaderno Abierto)
 # ---------------------------------------------------------------------------
-st.markdown(f"# 🖼️ Taller de Arte: *{st.session_state.nota_titulo}*")
-st.markdown("Crea, experimenta con texturas y guarda tus creaciones maestras.")
 
-# Controles superiores rápidos sobre el lienzo
-col_acc1, col_acc2, col_acc3 = st.columns([2, 2, 4])
-with col_acc1:
-    acabado_sel = st.selectbox("Efecto / Acabado", ACABADOS, index=st.session_state.acabado)
-    st.session_state.acabado = ACABADOS.index(acabado_sel)
-
-with col_acc2:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🧹 Limpiar Lienzo", use_container_width=True):
-        st.session_state.lienzo += 1
-        st.rerun()
-
-# Configuración del Canvas de Dibujo
-ancho_canvas = st.session_state.lienzo_ancho
-alto_canvas = st.session_state.lienzo_alto
-herramienta_activa = list(HERRAMIENTAS.values())[st.session_state.tool]
-grosor_activo = GROSORES[st.session_state.gro][1]
-
-# Contenedor del Lienzo central
-st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
-
-canvas_result = st_canvas(
-    fill_color="rgba(255, 165, 0, 0.3)",
-    stroke_width=grosor_activo,
-    stroke_color=pigmento_actual,
-    background_color=papel_actual_hex,
-    update_streamlit=True,
-    height=alto_canvas,
-    width=ancho_canvas,
-    drawing_mode=herramienta_activa,
-    key=f"canvas_{st.session_state.lienzo}",
+# Cabecera principal solicitada
+st.markdown(
+    '<div class="portfolio-card">'
+    '<div style="font-size: 1.1rem; font-weight: 600; color: #E8912D; margin-bottom: 0.3rem;">¡Bienvenido pequeño pintor!</div>'
+    '<h1 class="port-title">Espacio creativo para dibujar, imagina más allá.</h1>'
+    '<p class="port-subtitle">La Inteligencia Artificial va a traducir tu imagen o tu dibujo en una historia, en una cuentahistoria de fábulas, por ejemplo.</p>'
+    '</div>', 
+    unsafe_allow_html=True
 )
 
-st.markdown('</div>', unsafe_allow_html=True)
+# Contenedor del tablero de dibujo principal
+col_ lienzo_1, col_lienzo_2 = st.columns([3, 2])
 
-# ---------------------------------------------------------------------------
-# Procesamiento de Acabados y Exportación
-# ---------------------------------------------------------------------------
-if canvas_result.image_data is not None:
-    papel_rgb = hex_a_rgb(papel_actual_hex)
-    img_base = imagen_del_lienzo(canvas_result.image_data, papel_rgb)
+pigmento_activo = st.session_state.custom_hex if st.session_state.pig == IDX_PERSONALIZADO else (SLOTS[st.session_state.pig][1] if SLOTS[st.session_state.pig] else "#1F5BC4")
+grosor_activo = GROSORES[st.session_state.gro][1]
+herramienta_activa = list(HERRAMIENTAS.values())[st.session_state.tool]
+
+with col_lienzo_1:
+    st.markdown('<div class="portfolio-card">', unsafe_allow_html=True)
+    st.markdown("### 🖼️ Tablero de Dibujo Mágico")
+    st.markdown("Haz volar tu imaginación sobre el papel:")
     
-    # Aplicar acabados artísticos si se seleccionan
-    if st.session_state.acabado == 1:  # Acuarela
-        img_final = aplicar_acuarela(img_base, papel_rgb)
-    elif st.session_state.acabado == 2:  # Tiza
-        img_final = aplicar_tiza(img_base, papel_rgb)
-    else:
-        img_final = img_base
-
-    st.markdown("---")
-    col_down1, col_down2 = st.columns(2)
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",
+        stroke_width=grosor_activo,
+        stroke_color=pigmento_activo,
+        background_color="#FCF8EC",
+        update_streamlit=True,
+        height=st.session_state.lienzo_alto,
+        width=st.session_state.lienzo_ancho,
+        drawing_mode=herramienta_activa,
+        key=f"canvas_{st.session_state.lienzo}",
+    )
     
-    buf = io.BytesIO()
-    img_final.save(buf, format="PNG")
-    byte_im = buf.getvalue()
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        if st.button("🧹 Limpiar Tablero", use_container_width=True):
+            st.session_state.lienzo += 1
+            st.session_state.historia = ""
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with col_down1:
-        st.download_button(
-            label="📥 Descargar Obra de Arte (PNG)",
-            data=byte_im,
-            file_name=f"{st.session_state.nota_titulo.lower().replace(' ', '_')}.png",
-            mime="image/png",
-            use_container_width=True
+with col_lienzo_2:
+    st.markdown('<div class="portfolio-card">', unsafe_allow_html=True)
+    st.markdown("### 📖 Cuentahistoria Mágica")
+    st.markdown("Convierte tu arte en una fábula inspiradora.")
+    
+    titulo_obra = st.text_input("Título de tu obra:", "El viaje de la estrella valiente")
+    
+    if st.button("✨ ¡Traducir dibujo en fábula con IA!", use_container_width=True):
+        if not st.session_state.api_key:
+            st.error("Por favor, introduce tu clave de OpenAI en la barra lateral.")
+        elif canvas_result.image_data is None:
+            st.warning("¡Primero dibuja algo en el tablero!")
+        else:
+            with st.spinner("La magia está ocurriendo... Creando tu fábula..."):
+                try:
+                    img_final = imagen_del_lienzo(canvas_result.image_data, (252, 248, 236))
+                    img_base64 = a_base64(img_final)
+                    
+                    client = OpenAI(api_key=st.session_state.api_key)
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text", 
+                                        "text": f"Imagina que eres un cuentacuentos infantil entrañable. Con base en este dibujo titulado '{titulo_obra}', escribe una fábula corta, tierna y mágica dirigida a niños. Máximo 3 párrafos."
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/png;base64,{img_base64}"}
+                                    }
+                                ]
+                            }
+                        ],
+                        max_tokens=400
+                    )
+                    st.session_state.historia = response.choices[0].message.content
+                except Exception as e:
+                    st.error(f"Ocurrió un error al conectar con OpenAI: {e}")
+
+    # Cuadro de texto con contraste (Fondo crema, letra azul oscuro)
+    if st.session_state.historia:
+        st.markdown(
+            f'<div class="story-box"><strong>📖 Fábula de tu dibujo:</strong><br><br>{st.session_state.historia}</div>', 
+            unsafe_allow_html=True
         )
-    with col_down2:
-        st.success("✨ ¡Tu obra está lista para ser exhibida en la galería digital!")
+    else:
+        st.markdown(
+            '<div class="story-box" style="color: #8A7B60; font-style: italic;">Tu cuento aparecerá aquí en cuanto hagas clic en el botón mágico de IA...</div>', 
+            unsafe_allow_html=True
+        )
+        
+    st.markdown('</div>', unsafe_allow_html=True)
