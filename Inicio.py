@@ -266,8 +266,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Contenedor del tablero de dibujo principal
-col_ lienzo_1, col_lienzo_2 = st.columns([3, 2])
+# Contenedor del tablero de dibujo principal (Nombre de variable corregido sin espacios)
+col_lienzo_1, col_lienzo_2 = st.columns([3, 2])
 
 pigmento_activo = st.session_state.custom_hex if st.session_state.pig == IDX_PERSONALIZADO else (SLOTS[st.session_state.pig][1] if SLOTS[st.session_state.pig] else "#1F5BC4")
 grosor_activo = GROSORES[st.session_state.gro][1]
@@ -340,7 +340,7 @@ with col_lienzo_2:
                 except Exception as e:
                     st.error(f"Ocurrió un error al conectar con OpenAI: {e}")
 
-    # Cuadro de texto con contraste (Fondo crema, letra azul oscuro)
+    # Cuadro de texto con alto contraste (Fondo crema, letra azul oscuro)
     if st.session_state.historia:
         st.markdown(
             f'<div class="story-box"><strong>📖 Fábula de tu dibujo:</strong><br><br>{st.session_state.historia}</div>', 
