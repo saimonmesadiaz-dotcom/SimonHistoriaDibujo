@@ -1,5 +1,4 @@
 import base64
-import colorsys
 import html
 import io
 import os
@@ -246,18 +245,6 @@ def _libros():
     return piezas
 
 
-def _abanico():
-    petalos = ""
-    n = 20
-    for k in range(n):
-        ang = -96 + k * (92 / (n - 1))
-        h, s, v = (205 + k * 14) % 360, 0.9, 0.82
-        r, g, b = colorsys.hsv_to_rgb(h / 360, s, v)
-        color = "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-        petalos += f'<ellipse cx="130" cy="0" rx="130" ry="62" fill="{color}" opacity=".9" transform="rotate({ang:.1f})"/>'
-    return petalos
-
-
 def _aro_tiza(cy):
     return (
         '<defs><filter id="t"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" result="n"/>'
@@ -345,7 +332,6 @@ SVG_LIBROS = envolver(
     '<ellipse cx="116" cy="70" rx="7" ry="13" fill="#fff" opacity=".4" transform="rotate(18 116 70)"/>'
     '</g>',
 )
-SVG_ABANICO = envolver(400, 330, f'<g transform="translate(40 320)">{_abanico()}</g>')
 SVG_FRASCO = envolver(170, 270, _frasco())
 
 # Anillas de la espiral del cuaderno (se repiten a lo largo del lomo)
@@ -385,28 +371,31 @@ def svg_madera(base):
     return envolver(700, 460, trazos + motas)
 
 
-def _x(p):
-    """Posición horizontal dentro del espacio de trabajo (a la derecha de la barra lateral)."""
-    return f"calc(380px + (100vw - 380px) * {p})"
-
-
 @st.cache_data(show_spinner=False)
 def css_fondo(mesa_hex):
-    # (ilustración, posición, tamaño): repartidas por los cuatro bordes del espacio de trabajo
+    # (ilustración, posición "x% y%" respecto a la ventana, tamaño).
+    # El fondo es fijo y ocupa toda la ventana: los adornos de la izquierda quedan
+    # tapados por la barra lateral y aparecen al ocultarla. Tamaños parecidos entre sí.
     capas = [
-        (SVG_TIZA_ARRIBA, "calc(50% + 190px) 0", "auto 12vh"),
-        (SVG_TIZA_ABAJO, "calc(50% + 190px) 100%", "auto 12vh"),
-        (SVG_CHINCHETAS, "left 400px top 2vh", "auto 21vh"),
-        (SVG_SPLAT_MORADO, f"{_x(.20)} 1vh", "auto 11vh"),
-        (SVG_SPLAT_AMARILLO, f"{_x(.70)} 1vh", "auto 12vh"),
-        (SVG_TUBOS_ESQUINA, "right 0 top 0", "auto 25vh"),
-        (SVG_CRAYONES, "right 0 top 31%", "auto 30vh"),
-        (SVG_TUBOS_BAJOS, "right 0 top 62%", "auto 14vh"),
-        (SVG_LIBROS, "right 0 bottom 0", "auto 24vh"),
-        (SVG_SPLAT_NARANJA, f"{_x(.74)} calc(100% - 1vh)", "auto 11vh"),
-        (SVG_SPLAT_VERDE, f"{_x(.22)} 100%", "auto 11vh"),
-        (SVG_ABANICO, "left 380px bottom 0", "auto 28vh"),
-        (SVG_FRASCO, "left 404px top 46%", "auto 25vh"),
+        # --- borde superior ---
+        (SVG_SPLAT_MORADO, "30% 1%", "auto 10vh"),
+        (SVG_TIZA_ARRIBA, "50% 0", "auto 10vh"),
+        (SVG_SPLAT_AMARILLO, "72% 1%", "auto 10vh"),
+        # --- borde derecho ---
+        (SVG_TUBOS_ESQUINA, "100% 0", "auto 20vh"),
+        (SVG_CRAYONES, "100% 38%", "auto 22vh"),
+        (SVG_TUBOS_BAJOS, "99% 66%", "auto 16vh"),
+        (SVG_LIBROS, "100% 100%", "auto 21vh"),
+        # --- borde inferior ---
+        (SVG_SPLAT_VERDE, "20% 100%", "auto 10vh"),
+        (SVG_TIZA_ABAJO, "46% 100%", "auto 10vh"),
+        (SVG_SPLAT_NARANJA, "70% 99%", "auto 10vh"),
+        # --- borde izquierdo (visible al ocultar la barra) ---
+        (SVG_CHINCHETAS, "2% 2%", "auto 17vh"),
+        (SVG_SPLAT_MORADO, "1% 28%", "auto 10vh"),
+        (SVG_FRASCO, "3% 50%", "auto 21vh"),
+        (SVG_TUBOS_ESQUINA, "2% 80%", "auto 16vh"),
+        (SVG_SPLAT_AMARILLO, "9% 99%", "auto 10vh"),
     ]
     imagenes = [uri(c[0]) for c in capas] + [uri(svg_madera(mesa_hex))]
     repeticion = ["no-repeat"] * len(capas) + ["repeat"]
@@ -529,42 +518,49 @@ html, .stApp{color-scheme:light;}
 }
 .stApp label p{font-weight:600;}
 [data-testid="stHeader"]{background:transparent;}
-.block-container{max-width:1500px;padding-top:6.5rem;padding-bottom:7rem;}
+.block-container{max-width:100%;padding:6.5rem 2.5rem 7rem;}
 
-/* ---------- Barra lateral ---------- */
-[data-testid="stSidebar"][aria-expanded="true"]{
-  min-width:380px !important;
-  width:380px !important;
+/* ---------- Barra lateral (más ancha: llega hacia la mitad de la página) ---------- */
+@media (min-width: 900px){
+  [data-testid="stSidebar"][aria-expanded="true"]{
+    min-width:clamp(440px, 38vw, 720px) !important;
+    width:clamp(440px, 38vw, 720px) !important;
+  }
 }
 [data-testid="stSidebar"]{
   background:linear-gradient(180deg,#FCEFC9,#F7E2A8);
   border-right:2px solid rgba(160,110,40,.4);
 }
-[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{padding:1rem .9rem;}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{padding:1.6rem 1.8rem 3rem;}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"]{gap:1.6rem;}
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] p{color:var(--tinta);}
 
 [class*="st-key-panel_"]{
   background:linear-gradient(180deg,#FFF9E8,#FFF3D2);
   border:2px solid var(--borde);
-  border-radius:22px;
-  padding:16px 16px 18px;
+  border-radius:24px;
+  padding:26px 26px 30px;
   box-shadow:0 8px 14px -8px rgba(110,70,20,.5), inset 0 2px 0 #fff;
-  margin-bottom:14px;
+  margin-bottom:10px;
 }
+/* Más aire entre los elementos dentro de cada panel */
+[class*="st-key-panel_"] [data-testid="stVerticalBlock"]{gap:1.2rem;}
+[class*="st-key-panel_"] [data-testid="stHorizontalBlock"]{gap:1.1rem !important;}
+
 .panel-t{
   font-family:'Playfair Display',Georgia,serif;
   font-weight:700;
-  font-size:1.55rem;
+  font-size:1.65rem;
   line-height:1.1;
   color:var(--tinta);
-  margin:0 0 .7rem;
+  margin:0 0 .4rem;
 }
-.panel-s{font-style:italic;font-weight:600;font-size:.98rem;margin:.8rem 0 .4rem;}
+.panel-s{font-style:italic;font-weight:600;font-size:1.02rem;margin:1.2rem 0 .3rem;}
 .actual{
   display:flex;align-items:center;gap:10px;
-  font-weight:600;font-size:1rem;
-  margin:.3rem 0 .2rem;
+  font-weight:600;font-size:1.02rem;
+  margin:.8rem 0 .2rem;
 }
 .actual i{
   display:inline-block;width:20px;height:20px;
@@ -573,34 +569,48 @@ html, .stApp{color-scheme:light;}
   border:2px solid var(--tinta);
 }
 
-/* Paleta de madera con gotas de pintura */
+/* Paleta de pintor: contorno orgánico, agujero para el pulgar y gotas bien separadas */
 .st-key-paleta{
   position:relative;
+  max-width:600px;
+  margin:.6rem auto 1.4rem;
   background:
+    radial-gradient(ellipse at 30% 25%, rgba(255,236,190,.55) 0%, transparent 65%),
     repeating-linear-gradient(100deg, rgba(150,95,40,.10) 0 2px, transparent 2px 9px),
     linear-gradient(135deg,#F0CC92,#DDA860);
-  border:3px solid #A9733A;
-  border-radius:50%;
-  padding:38px 30px 38px;
-  margin:.1rem 0 .6rem;
-  gap:.3rem !important;
-  box-shadow:inset 0 3px 0 rgba(255,255,255,.45), 0 10px 12px -6px rgba(70,45,15,.55);
+  border:4px solid #A9733A;
+  border-radius:58% 42% 52% 48% / 56% 50% 50% 44%;
+  padding:70px 64px 110px;
+  gap:1.9rem !important;
+  box-shadow:inset 0 3px 0 rgba(255,255,255,.45), 0 14px 16px -8px rgba(70,45,15,.6);
 }
+.st-key-paleta::after{
+  content:"";
+  position:absolute;
+  right:15%; bottom:9%;
+  width:52px; height:64px;
+  border-radius:50%;
+  background:#F7E2A8;
+  border:3px solid #A9733A;
+  box-shadow:inset 3px 4px 7px rgba(70,45,15,.5);
+}
+.st-key-paleta [data-testid="stHorizontalBlock"]{gap:2.2rem !important;}
+
 [class*="st-key-pig_"] [data-testid="stButton"],
 [class*="st-key-pig_"] .stButton{
   width:100% !important;
   display:flex;
   justify-content:center;
 }
-.st-key-pig_0, .st-key-pig_2{margin-top:10px;}
-.st-key-pig_6, .st-key-pig_8{margin-top:-10px;}
+.st-key-pig_0, .st-key-pig_2{margin-top:12px;}
+.st-key-pig_6, .st-key-pig_8{margin-top:-12px;}
 [class*="st-key-pig_"] button{
   position:relative;
   display:block;
-  width:56px !important;
-  min-width:56px !important;
-  height:56px !important;
-  min-height:56px !important;
+  width:62px !important;
+  min-width:62px !important;
+  height:62px !important;
+  min-height:62px !important;
   padding:0 !important;
   border:0 !important;
   border-radius:50% 0 50% 50% !important;
@@ -621,12 +631,13 @@ html, .stApp{color-scheme:light;}
 }
 [class*="st-key-pig_"] button:hover{transform:rotate(-45deg) scale(1.1) !important;}
 
-/* Pigmentos extra: gotas pequeñas */
+/* Pigmentos extra: gotas pequeñas, separadas */
+.st-key-extras [data-testid="stHorizontalBlock"]{gap:1.4rem !important;}
 .st-key-extras [class*="st-key-pig_"] button{
-  width:38px !important;
-  min-width:38px !important;
-  height:38px !important;
-  min-height:38px !important;
+  width:40px !important;
+  min-width:40px !important;
+  height:40px !important;
+  min-height:40px !important;
 }
 
 /* Botón "+" (color personalizado) */
@@ -659,9 +670,9 @@ html, .stApp{color-scheme:light;}
 [class*="st-key-gro_"] .stButton{width:100% !important;display:flex;justify-content:center;}
 [class*="st-key-gro_"] button{
   width:100% !important;
-  min-width:50px !important;
-  height:68px !important;
-  min-height:68px !important;
+  min-width:56px !important;
+  height:80px !important;
+  min-height:80px !important;
   padding:0 !important;
   display:flex;
   align-items:center;
@@ -677,7 +688,7 @@ html, .stApp{color-scheme:light;}
 [class*="st-key-gro_"] button::after{
   content:"";
   display:block;
-  height:48px;
+  height:54px;
   border-radius:999px;
   transform:rotate(34deg);
 }
@@ -688,9 +699,9 @@ html, .stApp{color-scheme:light;}
 [class*="st-key-tool_"] button, [class*="st-key-fin_"] button{
   width:100% !important;
   min-width:90px !important;
-  height:46px !important;
-  min-height:46px !important;
-  padding:0 6px !important;
+  height:52px !important;
+  min-height:52px !important;
+  padding:0 8px !important;
   background:#FFF9E8 !important;
   border:2px solid var(--tinta) !important;
   border-radius:999px;
@@ -700,7 +711,7 @@ html, .stApp{color-scheme:light;}
 [class*="st-key-tool_"] button p, [class*="st-key-fin_"] button p{
   font-family:'Playfair Display',Georgia,serif;
   font-weight:700;
-  font-size:1rem;
+  font-size:1.05rem;
   color:var(--tinta);
 }
 [class*="st-key-tool_"] button:hover, [class*="st-key-fin_"] button:hover{background:#FBEFCB !important;}
@@ -709,12 +720,12 @@ html, .stApp{color-scheme:light;}
 [class*="st-key-pap_"] [data-testid="stButton"], [class*="st-key-pap_"] .stButton{width:100% !important;}
 [class*="st-key-pap_"] button{
   width:100% !important;
-  min-width:62px !important;
-  height:58px !important;
-  min-height:58px !important;
+  min-width:64px !important;
+  height:72px !important;
+  min-height:72px !important;
   padding:0 !important;
   border:2px solid rgba(15,43,91,.32) !important;
-  border-radius:12px;
+  border-radius:14px;
   box-shadow:none !important;
   transform:none !important;
 }
@@ -725,10 +736,10 @@ html, .stApp{color-scheme:light;}
   justify-content:center;
 }
 [class*="st-key-pcol_"] button, [class*="st-key-mesa_"] button{
-  width:44px !important;
-  min-width:44px !important;
-  height:44px !important;
-  min-height:44px !important;
+  width:52px !important;
+  min-width:52px !important;
+  height:52px !important;
+  min-height:52px !important;
   padding:0 !important;
   border:2px solid rgba(15,43,91,.4) !important;
   border-radius:50% !important;
@@ -766,9 +777,9 @@ html, .stApp{color-scheme:light;}
 /* ---------- Cuaderno abierto ---------- */
 .st-key-hoja{
   position:relative;
-  max-width:980px;
+  max-width:1000px;
   margin:0 auto 1.6rem;
-  padding:20px 24px 30px;
+  padding:24px 28px 34px;
   background:
     repeating-linear-gradient(45deg, rgba(255,255,255,.035) 0 2px, transparent 2px 6px),
     linear-gradient(135deg,#1D3F73,#102A52);
@@ -823,7 +834,7 @@ html, .stApp{color-scheme:light;}
   z-index:4;
   pointer-events:none;
 }
-.st-key-zona{padding:0;}
+.st-key-zona{padding:0;overflow-x:auto;}
 .st-key-zona iframe{
   display:block;
   max-width:100%;
@@ -833,7 +844,7 @@ html, .stApp{color-scheme:light;}
 
 /* ---------- Tarjetas de acciones y resultados ---------- */
 .st-key-acciones, .st-key-resultados{
-  max-width:980px;
+  max-width:1000px;
   margin:0 auto 1.2rem;
   background:linear-gradient(180deg,#FFF9E8,#FFF3D2);
   border:2px solid var(--borde);
@@ -913,7 +924,7 @@ with st.sidebar:
         st.markdown('<div class="panel-t">Color de tiza</div>', unsafe_allow_html=True)
         with st.container(key="paleta"):
             for fila in range(3):
-                columnas = st.columns(3, gap="small")
+                columnas = st.columns(3, gap="medium")
                 for c in range(3):
                     i = fila * 3 + c
                     with columnas[c]:
@@ -930,7 +941,7 @@ with st.sidebar:
 
         st.markdown('<div class="panel-s">Más pigmentos</div>', unsafe_allow_html=True)
         with st.container(key="extras"):
-            columnas_extra = st.columns(6, gap="small")
+            columnas_extra = st.columns(6, gap="medium")
             for k, i in enumerate(range(9, 15)):
                 with columnas_extra[k]:
                     with st.container(key=f"pig_{i}"):
@@ -945,7 +956,7 @@ with st.sidebar:
     # --- Grosor de tiza ---
     with st.container(key="panel_grosor"):
         st.markdown('<div class="panel-t">Grosor de tiza</div>', unsafe_allow_html=True)
-        cols_grosor = st.columns(5, gap="small")
+        cols_grosor = st.columns(5, gap="medium")
         for i, (nombre, _) in enumerate(GROSORES):
             with cols_grosor[i]:
                 with st.container(key=f"gro_{i}"):
@@ -956,7 +967,7 @@ with st.sidebar:
     # --- Disposición del tablero ---
     with st.container(key="panel_disposicion"):
         st.markdown('<div class="panel-t">Disposición</div>', unsafe_allow_html=True)
-        cols_papel = st.columns(4, gap="small")
+        cols_papel = st.columns(4, gap="medium")
         for i, nombre in enumerate(PAPELES):
             with cols_papel[i]:
                 with st.container(key=f"pap_{i}"):
@@ -967,14 +978,14 @@ with st.sidebar:
     with st.container(key="panel_papel"):
         st.markdown('<div class="panel-t">Papel y mesa</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-s">Color de las hojas</div>', unsafe_allow_html=True)
-        cols_pcol = st.columns(4, gap="small")
+        cols_pcol = st.columns(4, gap="medium")
         for i, (nombre, _) in enumerate(COLORES_PAPEL):
             with cols_pcol[i]:
                 with st.container(key=f"pcol_{i}"):
                     boton(nombre, key=f"btn_pcol_{i}", help=nombre,
                           on_click=elegir, args=("papel_color", i))
         st.markdown('<div class="panel-s">Madera de la mesa</div>', unsafe_allow_html=True)
-        cols_mesa = st.columns(3, gap="small")
+        cols_mesa = st.columns(3, gap="medium")
         for i, (nombre, _) in enumerate(MESAS):
             with cols_mesa[i]:
                 with st.container(key=f"mesa_{i}"):
@@ -984,14 +995,14 @@ with st.sidebar:
     # --- Herramienta y acabado ---
     with st.container(key="panel_herramienta"):
         st.markdown('<div class="panel-t">Herramienta</div>', unsafe_allow_html=True)
-        cols_tool = st.columns(3, gap="small")
+        cols_tool = st.columns(3, gap="medium")
         for i, nombre in enumerate(HERRAMIENTAS):
             with cols_tool[i]:
                 with st.container(key=f"tool_{i}"):
                     boton(ETIQUETA_HERRAMIENTA[i], key=f"btn_tool_{i}", help=nombre,
                           on_click=elegir, args=("tool", i))
         st.markdown('<div class="panel-s">Acabado de la imagen final</div>', unsafe_allow_html=True)
-        cols_fin = st.columns(2, gap="small")
+        cols_fin = st.columns(2, gap="medium")
         for i, nombre in enumerate(ACABADOS):
             with cols_fin[i]:
                 with st.container(key=f"fin_{i}"):
@@ -1022,7 +1033,7 @@ with st.container(key="hoja"):
                 stroke_color=trazo,
                 background_color="rgba(255,255,255,0)",
                 height=500,
-                width=820,
+                width=780,
                 drawing_mode=HERRAMIENTAS[herramienta],
                 key=f"lienzo_{st.session_state.lienzo}",
             )
