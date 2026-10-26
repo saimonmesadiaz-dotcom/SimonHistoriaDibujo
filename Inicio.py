@@ -320,10 +320,10 @@ def css_dinamico(pig_hex):
             f".st-key-pig_{i} button{{background:radial-gradient(circle at 36% 30%, {claro} 0%, {hex_} 52%, {oscuro} 100%) !important;}}"
         )
 
-    for i, px in enumerate([3, 6, 10, 15, 22]):
+    for i, px in enumerate([2, 5, 9, 14, 22]):
         reglas.append(
-            f".st-key-gro_{i} button::after{{width:{px}px;"
-            "background:repeating-linear-gradient(72deg, rgba(255,255,255,.30) 0 2px, transparent 2px 5px), "
+            f".st-key-gro_{i} button::after{{height:{px}px;"
+            "background:repeating-linear-gradient(90deg, rgba(255,255,255,.30) 0 2px, transparent 2px 5px), "
             f"{pig_hex};}}"
         )
 
@@ -368,7 +368,8 @@ def css_dinamico(pig_hex):
     )
     reglas.append(
         f".st-key-gro_{st.session_state.gro} button{{"
-        f"background:#FFF1D2 !important;border:3px solid {SEL} !important;}}"
+        f"background:#FFF1D2 !important;border-color:{SEL} !important;"
+        f"box-shadow:0 0 0 3px rgba(232,145,45,.28) !important;}}"
     )
     reglas.append(
         f".st-key-tool_{st.session_state.tool} button, .st-key-fin_{st.session_state.acabado} button{{"
@@ -468,19 +469,18 @@ html, .stApp{color-scheme:light;}
   font-size:2.2rem;font-weight:500;line-height:1;color:var(--tinta);
 }
 
-/* Grosor de tiza: trazos diagonales */
-[class*="st-key-gro_"] [data-testid="stButton"],
-[class*="st-key-gro_"] .stButton{width:100% !important;display:flex;justify-content:center;}
+/* Grosor de tiza: una fila por grosor, con su trazo de muestra */
+.st-key-lista_gro{gap:.5rem !important;}
+[class*="st-key-gro_"] [data-testid="stButton"], [class*="st-key-gro_"] .stButton{width:100% !important;}
 [class*="st-key-gro_"] button{
-  width:100% !important;min-width:50px !important;
-  height:68px !important;min-height:68px !important;
-  padding:0 !important;display:flex;align-items:center;justify-content:center;
-  background:transparent !important;border:3px solid transparent !important;
-  border-radius:14px;box-shadow:none !important;transform:none !important;overflow:hidden;
+  width:100% !important;height:46px !important;min-height:46px !important;
+  padding:0 16px !important;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:#FFFDF4 !important;border:2px solid var(--borde) !important;border-radius:14px;
+  box-shadow:0 2px 0 #ECDCA9 !important;transform:none !important;
 }
 [class*="st-key-gro_"] button:hover{background:#FBEFCB !important;}
-[class*="st-key-gro_"] button p{font-size:0;line-height:0;}
-[class*="st-key-gro_"] button::after{content:"";display:block;height:34px;border-radius:999px;transform:rotate(34deg);}
+[class*="st-key-gro_"] button p{font-family:'Lora',Georgia,serif;font-weight:600;font-size:.95rem;color:var(--tinta);white-space:nowrap;}
+[class*="st-key-gro_"] button::after{content:"";display:block;width:96px;flex:none;border-radius:999px;box-shadow:0 0 0 1px rgba(15,43,91,.22);}
 
 /* Píldoras: herramienta y acabado */
 [class*="st-key-tool_"] [data-testid="stButton"], [class*="st-key-tool_"] .stButton,
@@ -600,6 +600,29 @@ html, .stApp{color-scheme:light;}
 .libreta-texto{line-height:32px;}
 .libreta-texto, .libreta-titulo{margin:0;}
 
+/* ---------- Pulido ---------- */
+.marca{display:flex;align-items:center;gap:12px;padding:.2rem .4rem 1rem;}
+.marca .gota{flex:none;width:34px;height:34px;border-radius:50% 0 50% 50%;transform:rotate(-45deg);
+  background:radial-gradient(circle at 36% 30%,#FBD36B,#F2A81D 55%,#C97F0E);
+  box-shadow:inset -3px -4px 0 rgba(0,0,0,.14),0 3px 6px rgba(120,70,10,.35);}
+.marca b{display:block;font-family:'Playfair Display',Georgia,serif;font-size:1.6rem;font-style:italic;line-height:1;}
+.marca span{font-size:.9rem;opacity:.75;}
+.panel-t::before{content:"";display:inline-block;width:12px;height:12px;margin-right:10px;
+  background:var(--sel);border-radius:50% 0 50% 50%;transform:rotate(-45deg);position:relative;top:-2px;}
+[class*="st-key-panel_"]{transition:transform .2s ease, box-shadow .2s ease;}
+[class*="st-key-panel_"]:hover{transform:translateY(-2px);
+  box-shadow:0 14px 20px -10px rgba(110,70,20,.55), inset 0 2px 0 #fff;}
+.adorno{display:flex;gap:9px;justify-content:center;margin:.55rem 0 0;}
+.adorno i{width:11px;height:11px;border-radius:50% 0 50% 50%;transform:rotate(-45deg);
+  background:var(--c);box-shadow:0 1px 2px rgba(0,0,0,.4);}
+[data-testid="stSlider"] [role="slider"]{background:var(--tinta) !important;box-shadow:0 0 0 4px rgba(15,43,91,.18) !important;}
+[data-testid="stSlider"] [data-testid="stThumbValue"],
+[data-testid="stSlider"] [data-testid="stTickBarMin"],
+[data-testid="stSlider"] [data-testid="stTickBarMax"]{color:var(--tinta);font-weight:700;}
+.stButton > button{box-shadow:0 3px 0 rgba(15,43,91,.25);}
+.stButton > button:hover{transform:translateY(-1px);}
+.st-key-interpretar .stButton > button{padding:.7rem 1.4rem;font-size:1.1rem;box-shadow:0 4px 0 #0A1D40;}
+
 @media (prefers-reduced-motion:reduce){
   .stButton > button, [class*="st-key-pig_"] button{transition:none;}
 }
@@ -624,6 +647,11 @@ st.markdown(css_dinamico(pig_hex), unsafe_allow_html=True)
 # Barra lateral
 # ---------------------------------------------------------------------------
 with st.sidebar:
+    st.markdown(
+        '<div class="marca"><div class="gota"></div>'
+        '<div><b>Eres el pintor</b><span>Tu caja de pinturas</span></div></div>',
+        unsafe_allow_html=True,
+    )
     # --- Color de tiza: solo gotas de pintura, repartidas en horizontal ---
     with st.container(key="panel_color"):
         st.markdown('<div class="panel-t">Color de tiza</div>', unsafe_allow_html=True)
@@ -651,11 +679,10 @@ with st.sidebar:
     # --- Grosor de tiza ---
     with st.container(key="panel_grosor"):
         st.markdown('<div class="panel-t">Grosor de tiza</div>', unsafe_allow_html=True)
-        cols_grosor = st.columns(5, gap="small")
-        for i, (nombre, _) in enumerate(GROSORES):
-            with cols_grosor[i]:
+        with st.container(key="lista_gro"):
+            for i, (nombre, px) in enumerate(GROSORES):
                 with st.container(key=f"gro_{i}"):
-                    boton(nombre, key=f"btn_gro_{i}", help=nombre,
+                    boton(f"{nombre} · {px} px", key=f"btn_gro_{i}",
                           on_click=elegir, args=("gro", i))
         intensidad = st.slider("Intensidad del pigmento", 20, 100, 80, format="%d%%")
 
@@ -680,6 +707,7 @@ with st.sidebar:
     with st.container(key="panel_disposicion"):
         st.markdown('<div class="panel-t">Lienzo</div>', unsafe_allow_html=True)
         tam = st.select_slider("Tamaño del lienzo", list(LIENZOS), value="Mediano")
+        barra = st.checkbox("Mostrar deshacer, rehacer y borrar", value=True)
         st.markdown('<div class="panel-s">Disposición de la hoja</div>', unsafe_allow_html=True)
         cols_papel = st.columns(4, gap="small")
         for i, nombre in enumerate(PAPELES):
@@ -721,7 +749,10 @@ ancho_l, alto_l = LIENZOS[tam]
 with st.container(key="hoja"):
     st.markdown(
         '<div class="rotulo"><h1>Taller de arte</h1>'
-        '<p>Dibuja lo que quieras y la máquina lo interpretará.</p></div>',
+        '<p>Dibuja lo que quieras y la máquina lo interpretará.</p>'
+        '<div class="adorno">'
+        '<i style="--c:#E0393E"></i><i style="--c:#F5C02A"></i><i style="--c:#3E9E5F"></i>'
+        '<i style="--c:#1F5BC4"></i><i style="--c:#7B4FB8"></i></div></div>',
         unsafe_allow_html=True,
     )
     with st.container(key="paginas"):
@@ -733,6 +764,7 @@ with st.container(key="hoja"):
                 background_color=papel_hex_global,
                 height=alto_l,
                 width=ancho_l,
+                display_toolbar=barra,
                 drawing_mode=HERRAMIENTAS[herramienta],
                 key=f"lienzo_{st.session_state.lienzo}_{tam}",
             )
@@ -752,7 +784,7 @@ with st.container(key="acciones"):
         api_key = ke or os.environ.get("OPENAI_API_KEY", "")
     with c_interpretar:
         with st.container(key="interpretar"):
-            interpretar = st.button("Interpretar mi dibujo")
+            interpretar = st.button("✦ Interpretar mi dibujo")
     with c_nuevo:
         nuevo = st.button("Lienzo nuevo")
     aviso = st.container()
