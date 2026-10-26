@@ -45,12 +45,25 @@ LIENZOS = {"Pequeño": (560, 360), "Mediano": (700, 450), "Grande": (840, 530)}
 
 PAPELES = ["Liso", "Rayado", "Cuadros", "Puntos"]
 COLORES_PAPEL = [
-    ("Hueso", "#EDE5D1"),
-    ("Crema", "#FCF8EC"),
+    ("Crema", "#FCF3D9"),
     ("Blanco", "#FFFFFF"),
-    ("Kraft", "#E5D2AC"),
+    ("Rosa pastel", "#FADADD"),
+    ("Menta", "#D5F2E3"),
+    ("Cielo", "#D3E6FA"),
+    ("Lila", "#E5DCF7"),
+    ("Durazno", "#FFD9B5"),
+    ("Limón", "#FFE75E"),
 ]
-MESAS = [("Nogal claro", "#C99A62"), ("Roble", "#D9B27C"), ("Cerezo", "#A8683F")]
+MESAS = [
+    ("Nogal", "#C99A62"),
+    ("Cerezo", "#A8683F"),
+    ("Café oscuro", "#5B3A24"),
+    ("Verde bosque", "#4E7B5C"),
+    ("Azul petróleo", "#3B6A87"),
+    ("Mostaza", "#D9A21B"),
+    ("Rosa palo", "#D98FA0"),
+    ("Ciruela", "#7B5A94"),
+]
 ACABADOS = ["Acuarela", "Tiza"]
 
 st.set_page_config(page_title="Taller de arte", layout="wide", initial_sidebar_state="expanded")
@@ -77,6 +90,18 @@ def boton(etiqueta, **kw):
         return st.button(etiqueta, width="stretch", **kw)
     except TypeError:
         return st.button(etiqueta, use_container_width=True, **kw)
+
+
+def rejilla(items, prefijo, clave):
+    """Muestras de color en filas de 4, pegadas entre sí."""
+    for fila in range(0, len(items), 4):
+        cols = st.columns(4, gap="small")
+        for k, (nombre, _) in enumerate(items[fila:fila + 4]):
+            i = fila + k
+            with cols[k]:
+                with st.container(key=f"{prefijo}_{i}"):
+                    boton(nombre, key=f"btn_{prefijo}_{i}", help=nombre,
+                          on_click=elegir, args=(clave, i))
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +408,17 @@ def css_dinamico(pig_hex):
         f"border:3px solid {SEL} !important;"
         f"box-shadow:0 0 0 3px #FFF6DD, 0 0 0 5px {SEL} !important;}}"
     )
+    reglas.append(
+        f".st-key-pcol_{st.session_state.papel_color} button::after, "
+        f".st-key-mesa_{st.session_state.mesa} button::after{{"
+        "content:'✓';color:#0F2B5B;font-weight:800;font-size:1.15rem;text-shadow:0 0 4px #fff, 0 0 2px #fff;}"
+    )
+    if sel_pig == IDX_PERSONALIZADO:
+        reglas.append(
+            f".st-key-pig_{IDX_PERSONALIZADO} button{{background:{st.session_state.custom_hex} !important;"
+            "border:3px solid #fff !important;}"
+            f".st-key-pig_{IDX_PERSONALIZADO} button::after{{color:#fff;text-shadow:0 0 3px rgba(0,0,0,.7);}}"
+        )
     return "<style>" + "\n".join(reglas) + "</style>"
 
 
@@ -507,13 +543,16 @@ html, .stApp{color-scheme:light;}
   border-radius:12px;box-shadow:none !important;transform:none !important;
 }
 [class*="st-key-pcol_"] [data-testid="stButton"], [class*="st-key-mesa_"] [data-testid="stButton"],
-[class*="st-key-pcol_"] .stButton, [class*="st-key-mesa_"] .stButton{width:100% !important;display:flex;justify-content:center;}
+[class*="st-key-pcol_"] .stButton, [class*="st-key-mesa_"] .stButton{width:100% !important;}
 [class*="st-key-pcol_"] button, [class*="st-key-mesa_"] button{
-  width:44px !important;min-width:44px !important;
-  height:44px !important;min-height:44px !important;
-  padding:0 !important;border:2px solid rgba(15,43,91,.4) !important;
-  border-radius:50% !important;box-shadow:none !important;transform:none !important;
+  width:100% !important;min-width:0 !important;
+  height:42px !important;min-height:42px !important;
+  padding:0 !important;display:flex;align-items:center;justify-content:center;
+  border:2px solid rgba(15,43,91,.28) !important;
+  border-radius:10px !important;box-shadow:0 2px 0 rgba(15,43,91,.18) !important;transform:none !important;
+  transition:transform .12s ease;
 }
+[class*="st-key-pcol_"] button:hover, [class*="st-key-mesa_"] button:hover{transform:translateY(-2px) !important;}
 [class*="st-key-pap_"] button p, [class*="st-key-pcol_"] button p, [class*="st-key-mesa_"] button p{font-size:0;line-height:0;}
 
 /* Botones generales */
@@ -720,19 +759,9 @@ with st.sidebar:
     with st.container(key="panel_papel"):
         st.markdown('<div class="panel-t">Papel y mesa</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-s">Color de las hojas</div>', unsafe_allow_html=True)
-        cols_pcol = st.columns(4, gap="small")
-        for i, (nombre, _) in enumerate(COLORES_PAPEL):
-            with cols_pcol[i]:
-                with st.container(key=f"pcol_{i}"):
-                    boton(nombre, key=f"btn_pcol_{i}", help=nombre,
-                          on_click=elegir, args=("papel_color", i))
-        st.markdown('<div class="panel-s">Madera de la mesa</div>', unsafe_allow_html=True)
-        cols_mesa = st.columns(3, gap="small")
-        for i, (nombre, _) in enumerate(MESAS):
-            with cols_mesa[i]:
-                with st.container(key=f"mesa_{i}"):
-                    boton(nombre, key=f"btn_mesa_{i}", help=nombre,
-                          on_click=elegir, args=("mesa", i))
+        rejilla(COLORES_PAPEL, "pcol", "papel_color")
+        st.markdown('<div class="panel-s">Color de la mesa</div>', unsafe_allow_html=True)
+        rejilla(MESAS, "mesa", "mesa")
 
 herramienta = list(HERRAMIENTAS)[st.session_state.tool]
 
@@ -745,6 +774,9 @@ trazo = f"rgba({r},{g},{b},{alfa})"
 relleno = f"rgba({r},{g},{b},{alfa * 0.35})"
 ancho = GROSORES[st.session_state.gro][1]
 ancho_l, alto_l = LIENZOS[tam]
+
+if not barra:
+    st.markdown(f"<style>.st-key-zona{{height:{alto_l}px;overflow:hidden;}}</style>", unsafe_allow_html=True)
 
 with st.container(key="hoja"):
     st.markdown(
