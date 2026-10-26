@@ -1,5 +1,4 @@
 import base64
-import colorsys
 import html
 import io
 import os
@@ -17,13 +16,12 @@ from streamlit_drawable_canvas import st_canvas
 TINTA = "#0F2B5B"  # azul oscuro de todas las letras
 SEL = "#E8912D"    # marco naranja de lo seleccionado
 
-# 15 casillas de pigmento (la 4 es el botón "+" para crear un color propio)
+# 15 casillas de pigmento (la 14, la última, es el botón "+" para crear un color propio)
 SLOTS = [
     ("Azul", "#1F5BC4"),
     ("Rojo carmín", "#E0393E"),
     ("Verde", "#3E9E5F"),
     ("Amarillo", "#F5C02A"),
-    None,
     ("Naranja", "#F28A2E"),
     ("Rosa", "#EE7FAE"),
     ("Morado", "#7B4FB8"),
@@ -34,8 +32,9 @@ SLOTS = [
     ("Café", "#8A5530"),
     ("Burdeos", "#8E1F3D"),
     ("Blanco tiza", "#FFFFFF"),
+    None,  # el "+" va siempre de último
 ]
-IDX_PERSONALIZADO = 4
+IDX_PERSONALIZADO = 14
 
 GROSORES = [("Muy fino", 2), ("Fino", 5), ("Medio", 10), ("Grueso", 18), ("Brocha", 32)]
 
@@ -179,57 +178,75 @@ def envolver(w, h, interior):
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">{interior}</svg>'
 
 
-def tubo(x, y, rot, color, escala=1.0):
+def oscuro(c, t=0.28):
+    return mezcla(c, (0, 0, 0), t)
+
+
+def pincel(x, y, rot, mango, cerda, esc=1.0):
     return (
-        f'<g transform="translate({x} {y}) rotate({rot}) scale({escala})">'
-        '<path d="M-26 -70 L26 -70 L36 42 L-36 42Z" fill="#DDD9E0" stroke="#BDB8C6" stroke-width="2"/>'
-        f'<path d="M-31 -12 L31 -12 L36 42 L-36 42Z" fill="{color}"/>'
-        '<path d="M-26 -70 L26 -70 L26 -90 L-26 -90Z" fill="#CFCAD8"/>'
-        '<path d="M-22 -80 H22 M-22 -86 H22" stroke="#B3AEC0" stroke-width="2"/>'
-        '<rect x="-13" y="42" width="26" height="20" rx="5" fill="#EDEAF0"/>'
-        f'<rect x="-7" y="62" width="14" height="10" rx="3" fill="{color}"/>'
-        f'<ellipse cx="0" cy="78" rx="10" ry="8" fill="{color}"/>'
-        '<path d="M-18 -60 L-22 30" stroke="#fff" stroke-width="5" opacity=".35" stroke-linecap="round"/>'
+        f'<g transform="translate({x} {y}) rotate({rot}) scale({esc})">'
+        f'<path d="M-5 -170 Q0 -178 5 -170 L9 -42 L-9 -42Z" fill="{mango}"/>'
+        f'<path d="M-2 -164 L-5 -52" stroke="#fff" stroke-width="3" opacity=".35" stroke-linecap="round"/>'
+        '<rect x="-10" y="-44" width="20" height="42" rx="2" fill="#C9D0DA"/>'
+        '<path d="M-10 -34 H10 M-10 -26 H10" stroke="#9AA3B0" stroke-width="2"/>'
+        f'<path d="M-10 -2 C-14 24 -4 44 0 58 C4 44 14 24 10 -2Z" fill="{cerda}"/>'
+        f'<path d="M-4 4 C-6 22 -2 36 0 46" stroke="#fff" stroke-width="2.5" opacity=".4" fill="none"/>'
         '</g>'
     )
 
 
-def _libros():
-    datos = [("#6A4FA8", 22, 252, 238), ("#F28C28", 10, 214, 250), ("#3E9E5F", 20, 176, 240),
-             ("#F5C02A", 8, 138, 246), ("#1F5BC4", 16, 100, 236)]
-    piezas = ""
-    for color, ox, y, w in datos:
-        piezas += (
-            f'<rect x="{ox}" y="{y}" width="{w}" height="36" rx="4" fill="{color}"/>'
-            f'<rect x="{ox + w - 18}" y="{y + 3}" width="18" height="30" fill="#FBF3DD"/>'
-            f'<rect x="{ox + 14}" y="{y + 6}" width="8" height="24" fill="#fff" opacity=".28"/>'
-        )
-    return piezas
+def crayola(x, y, rot, c):
+    return (
+        f'<g transform="translate({x} {y}) rotate({rot})">'
+        f'<rect x="-10" y="-46" width="20" height="78" rx="4" fill="{c}"/>'
+        f'<rect x="-10" y="-28" width="20" height="44" fill="{oscuro(c, .22)}"/>'
+        '<path d="M-10 -22 H10 M-10 10 H10" stroke="#fff" stroke-width="2" opacity=".7"/>'
+        f'<path d="M-10 32 L10 32 L0 58Z" fill="{c}"/>'
+        '<rect x="-6" y="-44" width="3.5" height="72" rx="1.7" fill="#fff" opacity=".3"/>'
+        '</g>'
+    )
 
 
-def _abanico():
-    petalos = ""
-    n = 20
-    for k in range(n):
-        ang = -96 + k * (92 / (n - 1))
-        r, g, b = colorsys.hsv_to_rgb(((205 + k * 14) % 360) / 360, 0.9, 0.82)
-        color = "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-        petalos += f'<ellipse cx="130" cy="0" rx="130" ry="62" fill="{color}" opacity=".9" transform="rotate({ang:.1f})"/>'
-    return petalos
+def lapiz(x, y, rot, c):
+    return (
+        f'<g transform="translate({x} {y}) rotate({rot})">'
+        '<rect x="-8" y="-84" width="16" height="12" rx="3" fill="#F29CB5"/>'
+        '<rect x="-8" y="-72" width="16" height="8" fill="#BFC4CC"/>'
+        f'<rect x="-8" y="-64" width="16" height="104" fill="{c}"/>'
+        f'<rect x="-8" y="-64" width="5" height="104" fill="#fff" opacity=".25"/>'
+        f'<rect x="3" y="-64" width="5" height="104" fill="{oscuro(c, .25)}" opacity=".7"/>'
+        '<path d="M-8 40 L8 40 L0 66Z" fill="#F2D6A6"/>'
+        f'<path d="M-3 58 L3 58 L0 66Z" fill="{oscuro(c, .1)}"/>'
+        '</g>'
+    )
 
 
-SVG_TUBOS_ESQUINA = envolver(300, 230, tubo(100, 100, -40, "#F5C02A") + tubo(205, 82, 30, "#3EAF5C", 0.95))
-SVG_LIBROS = envolver(
-    340, 290,
-    _libros()
-    + '<g transform="translate(0 -16)">'
-    '<ellipse cx="136" cy="118" rx="46" ry="7" fill="#000" opacity=".18"/>'
-    '<path d="M136 52 C100 38 82 70 92 100 C102 126 124 122 136 118 C148 122 170 126 180 100 C190 70 172 38 136 52Z" fill="#E0393E"/>'
-    '<path d="M136 52 C136 36 144 26 158 22 C158 38 150 48 136 52Z" fill="#3E9E5F"/>'
-    '<ellipse cx="116" cy="70" rx="7" ry="13" fill="#fff" opacity=".4" transform="rotate(18 116 70)"/>'
-    '</g>',
+def mancha(w, h, color, gotas):
+    forma = ("M62 8 C82 2 100 18 104 38 C122 40 132 62 118 78 C128 98 110 116 90 110 "
+             "C78 126 52 124 44 106 C24 110 8 92 18 74 C2 60 10 38 30 36 C30 20 44 10 62 8Z")
+    puntos = "".join(f'<circle cx="{px}" cy="{py}" r="{r}" fill="{color}"/>' for px, py, r in gotas)
+    return envolver(
+        w, h,
+        f'<g><path d="{forma}" fill="{color}"/>'
+        f'<path d="{forma}" transform="translate(14 14) scale(.78)" fill="#fff" opacity=".22"/>'
+        f'{puntos}</g>'
+    )
+
+
+SVG_PINCELES = envolver(
+    300, 260,
+    pincel(120, 190, 26, "#1D3F73", "#E0393E")
+    + pincel(190, 198, 10, "#8A5530", "#F5C02A")
+    + pincel(250, 190, -6, "#E0393E", "#2F78D8"),
 )
-SVG_ABANICO = envolver(400, 330, f'<g transform="translate(40 320)">{_abanico()}</g>')
+SVG_CRAYOLAS = envolver(
+    330, 300,
+    crayola(70, 170, -62, "#E0393E") + crayola(125, 135, -42, "#F5C02A")
+    + crayola(190, 175, -78, "#2F78D8") + crayola(250, 130, -18, "#3E9E5F")
+    + lapiz(150, 238, 74, "#7B4FB8") + lapiz(262, 236, -72, "#F28A2E"),
+)
+SVG_MANCHA_MORADA = mancha(150, 140, "#7B4FB8", [(10, 100, 6), (140, 30, 5), (136, 118, 4)])
+SVG_MANCHA_TURQUESA = mancha(150, 140, "#1FB5C5", [(14, 30, 5), (138, 100, 6), (22, 122, 4)])
 
 ANILLAS = uri(
     '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">'
@@ -266,9 +283,10 @@ def svg_madera(base):
 @st.cache_data(show_spinner=False)
 def css_fondo(mesa_hex):
     capas = [
-        (SVG_TUBOS_ESQUINA, "right 0 top 0", "auto 22vh"),
-        (SVG_LIBROS, "right 0 bottom 0", "auto 22vh"),
-        (SVG_ABANICO, "left 380px bottom 0", "auto 22vh"),
+        (SVG_PINCELES, "right 0 top 0", "auto 28vh"),
+        (SVG_CRAYOLAS, "right 0 bottom 0", "auto 26vh"),
+        (SVG_MANCHA_MORADA, "left 400px bottom 1vh", "auto 17vh"),
+        (SVG_MANCHA_TURQUESA, "left 400px top 4vh", "auto 14vh"),
     ]
     imagenes = [uri(c[0]) for c in capas] + [uri(svg_madera(mesa_hex))]
     repeticion = ["no-repeat"] * len(capas) + ["repeat"]
@@ -325,18 +343,20 @@ def css_dinamico(pig_hex):
     for i, (_, hex_) in enumerate(MESAS):
         reglas.append(f".st-key-mesa_{i} button{{background:{hex_} !important;}}")
 
+    sombra = ("linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.06) 38%, rgba(0,0,0,.14) 48.4%, "
+              "rgba(0,0,0,.30) 50%, rgba(0,0,0,.14) 51.6%, rgba(0,0,0,.06) 62%, rgba(0,0,0,0) 100%)")
     tramas = [
         "none",
         "repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(15,43,91,.22) 35px, rgba(15,43,91,.22) 36px)",
         "linear-gradient(rgba(15,43,91,.14) 1px, transparent 1px), linear-gradient(90deg, rgba(15,43,91,.14) 1px, transparent 1px)",
         "radial-gradient(circle, rgba(15,43,91,.34) 1.6px, transparent 2px)",
     ]
-    tamanos = ["auto", "auto", "30px 30px", "28px 28px"]
+    tamanos = ["auto", "auto", "30px 30px, 30px 30px", "28px 28px"]
     reglas.append(
-        f".st-key-paginas{{background-color:{papel_hex};"
-        f"background-image:{tramas[st.session_state.papel]};"
-        f"background-size:{tamanos[st.session_state.papel]};}}"
+        f".st-key-paginas{{background-color:{papel_hex};}}"
         f".st-key-paginas::before{{background-image:{ANILLAS};}}"
+        f".st-key-paginas::after{{background-image:{sombra}, {tramas[st.session_state.papel]};"
+        f"background-size:100% 100%, {tamanos[st.session_state.papel]};background-position:0 0, 0 0;}}"
     )
 
     sel_pig = st.session_state.pig
@@ -456,11 +476,11 @@ html, .stApp{color-scheme:light;}
   height:68px !important;min-height:68px !important;
   padding:0 !important;display:flex;align-items:center;justify-content:center;
   background:transparent !important;border:3px solid transparent !important;
-  border-radius:14px;box-shadow:none !important;transform:none !important;
+  border-radius:14px;box-shadow:none !important;transform:none !important;overflow:hidden;
 }
 [class*="st-key-gro_"] button:hover{background:#FBEFCB !important;}
 [class*="st-key-gro_"] button p{font-size:0;line-height:0;}
-[class*="st-key-gro_"] button::after{content:"";display:block;height:48px;border-radius:999px;transform:rotate(34deg);}
+[class*="st-key-gro_"] button::after{content:"";display:block;height:34px;border-radius:999px;transform:rotate(34deg);}
 
 /* Píldoras: herramienta y acabado */
 [class*="st-key-tool_"] [data-testid="stButton"], [class*="st-key-tool_"] .stButton,
@@ -593,7 +613,8 @@ if st.session_state.pig == IDX_PERSONALIZADO:
     pig_nombre, pig_hex = "Color personalizado", st.session_state.custom_hex
 else:
     pig_nombre, pig_hex = SLOTS[st.session_state.pig]
-papel_rgb = hex_a_rgb(COLORES_PAPEL[st.session_state.papel_color][1])
+papel_hex_global = COLORES_PAPEL[st.session_state.papel_color][1]
+papel_rgb = hex_a_rgb(papel_hex_global)
 
 st.markdown(CSS_BASE, unsafe_allow_html=True)
 st.markdown(css_fondo(MESAS[st.session_state.mesa][1]), unsafe_allow_html=True)
@@ -709,7 +730,7 @@ with st.container(key="hoja"):
                 fill_color=relleno if rellenar else "rgba(0,0,0,0)",
                 stroke_width=ancho,
                 stroke_color=trazo,
-                background_color="rgba(255,255,255,0)",
+                background_color=papel_hex_global,
                 height=alto_l,
                 width=ancho_l,
                 drawing_mode=HERRAMIENTAS[herramienta],
