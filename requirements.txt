@@ -1,5 +1,6 @@
-streamlit==1.38.0
+streamlit>=1.39
 streamlit-drawable-canvas==0.9.3
 pillow
 numpy<2
 openai
+ 
